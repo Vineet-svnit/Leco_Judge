@@ -6,11 +6,11 @@ import {
 	listQuestions,
 	updateQuestion,
 } from '../controllers/question.controller.js';
-import { requireAdmin } from '../middleware/auth.middleware.js';
+import { requireAdmin, requireAuth } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
-router.use(requireAdmin);
+router.use(requireAuth, requireAdmin);
 
 router.get('/', listQuestions);
 router.post('/questions', createQuestion);
