@@ -1,4 +1,5 @@
 import Question from '../models/question.model.js';
+import Counter from '../models/counter.model.js';
 
 const mapQuestionPayload = (body, adminId) => ({
 	adminId,
@@ -9,9 +10,20 @@ const mapQuestionPayload = (body, adminId) => ({
 	topic: body.topic || '',
 	examples: body.examples || [],
 	constraints: body.constraints || '',
+	languages: body.languages || [],
 	timeLimit: body.timeLimit,
 	memoryLimit: body.memoryLimit,
 });
+
+const getNextQuestionNo = async () => {
+	const counter = await Counter.findOneAndUpdate(
+		{ _id: 'questionNo' },
+		{ $inc: { sequence: 1 } },
+		{ new: true, upsert: true, setDefaultsOnInsert: true }
+	);
+
+	return counter.sequence;
+};
 
 export const listQuestions = async (req, res) => {
 	const questions = await Question.find().sort({ createdAt: -1 });
@@ -29,7 +41,11 @@ export const getQuestionById = async (req, res) => {
 };
 
 export const createQuestion = async (req, res) => {
-	const question = await Question.create(mapQuestionPayload(req.body, req.user._id));
+	const questionNo = await getNextQuestionNo();
+	const question = await Question.create({
+		...mapQuestionPayload(req.body, req.user._id),
+		questionNo,
+	});
 	return res.status(201).json({ message: 'Question created', question });
 };
 
