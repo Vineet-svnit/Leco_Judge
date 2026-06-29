@@ -13,11 +13,7 @@ const testCaseSchema = new mongoose.Schema(
 		},
 		output: {
 			type: String,
-			required: true,
-		},
-		isHidden: {
-			type: Boolean,
-			default: true,
+			default: '',
 		},
 	},
 	{

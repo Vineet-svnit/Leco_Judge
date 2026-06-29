@@ -65,7 +65,28 @@ export function QuestionEditorPage({ mode }) {
 			.getById(params.id)
 			.then((data) => {
 				if (mounted) {
-					setState({ isLoading: false, error: '', question: data?.question || null });
+					const question = data?.question || null;
+					// Load testcases for edit mode
+					if (question?._id) {
+						questionApi
+							.listTestcases(question._id)
+							.then((tcData) => {
+								if (mounted) {
+									setState({
+										isLoading: false,
+										error: '',
+										question: { ...question, testcases: tcData?.testcases || [] },
+									});
+								}
+							})
+							.catch(() => {
+								if (mounted) {
+									setState({ isLoading: false, error: '', question });
+								}
+							});
+					} else {
+						setState({ isLoading: false, error: '', question });
+					}
 				}
 			})
 			.catch(() => {
@@ -80,13 +101,22 @@ export function QuestionEditorPage({ mode }) {
 	}, [mode, params.id]);
 
 	const handleSubmit = async (payload) => {
+		const { testcases, ...questionPayload } = payload;
+
 		if (mode === 'create') {
-			const response = await questionApi.create(payload);
-			navigate(`/admin/questions/${response.question._id}`);
+			const response = await questionApi.create(questionPayload);
+			const newId = response.question._id;
+			if (testcases?.length) {
+				await questionApi.batchSaveTestcases(newId, testcases);
+			}
+			navigate(`/admin/questions/${newId}`);
 			return;
 		}
 
-		await questionApi.update(params.id, payload);
+		await questionApi.update(params.id, questionPayload);
+		if (testcases) {
+			await questionApi.batchSaveTestcases(params.id, testcases);
+		}
 		navigate(`/admin/questions/${params.id}`);
 	};
 

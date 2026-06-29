@@ -30,4 +30,11 @@ export const questionApi = {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(payload),
 		}),
+	listTestcases: (questionId) => requestJson(`/admin/questions/${questionId}/testcases`),
+	batchSaveTestcases: (questionId, testcases) =>
+		requestJson(`/admin/questions/${questionId}/testcases/batch`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ testcases }),
+		}),
 };

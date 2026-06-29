@@ -84,6 +84,10 @@ const questionSchema = new mongoose.Schema(
 				message: 'At least one language snippet must be provided.',
 			},
 		},
+		officialSolution: {
+			type: String,
+			default: '',
+		},
 		timeLimit: {
 			type: Number,
 		},

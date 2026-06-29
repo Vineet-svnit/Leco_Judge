@@ -4,7 +4,7 @@ import Editor from '@monaco-editor/react';
 
 import { AppNavbar } from '../../shared/components/AppNavbar.jsx';
 import { useQuestion } from '../hooks/useQuestion.js';
-// import { submissionApi } from '../services/submissionService.js';
+import { submissionApi } from '../services/submissionService.js';
 
 export default function QuestionDetailPage({ user, logout }) {
 	if (!user) {

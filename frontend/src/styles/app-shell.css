@@ -941,3 +941,217 @@
 	margin: 0;
 	color: #f8fbff;
 }
+
+/* ── Testcase table ─────────────────────────────────────────── */
+.question-testcases {
+	grid-column: 1 / -1;
+}
+
+.testcases-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.testcases-table th,
+.testcases-table td {
+	padding: 8px 12px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	text-align: left;
+	vertical-align: top;
+}
+
+.testcases-table pre {
+	margin: 0;
+	white-space: pre-wrap;
+	word-break: break-all;
+	max-height: 80px;
+	overflow-y: auto;
+}
+
+/* ── Testcase modal ─────────────────────────────────────────── */
+.tc-modal-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.72);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+	padding: 20px;
+}
+
+.tc-modal {
+	background: linear-gradient(160deg, #111827 0%, #0d1526 100%);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 24px;
+	width: min(680px, 100%);
+	max-height: 90vh;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+	padding: 32px;
+	box-shadow: 0 32px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(125, 211, 252, 0.06);
+}
+
+.tc-modal__header {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	position: relative;
+}
+
+.tc-modal__eyebrow {
+	display: none;
+}
+
+.tc-modal__title {
+	margin: 0;
+	font-size: 1.4rem;
+	font-weight: 800;
+	letter-spacing: -0.03em;
+	color: #f8fbff;
+	flex: 1;
+}
+
+.tc-modal__close {
+	position: absolute;
+	top: -4px;
+	right: -4px;
+	background: rgba(255, 255, 255, 0.07);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 10px;
+	color: rgba(230, 236, 255, 0.6);
+	width: 34px;
+	height: 34px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	font-size: 0.85rem;
+	transition: background 150ms, color 150ms;
+}
+
+.tc-modal__close:hover {
+	background: rgba(255, 255, 255, 0.13);
+	color: #f8fbff;
+}
+
+.tc-modal__question-ref {
+	border-radius: 16px;
+	background: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(255, 255, 255, 0.07);
+	padding: 16px 18px;
+}
+
+.tc-modal__question-label {
+	font-size: 0.7rem;
+	text-transform: uppercase;
+	letter-spacing: 0.12em;
+	color: #7dd3fc;
+	font-weight: 700;
+	margin: 0 0 10px;
+}
+
+.tc-modal__question-body {
+	font-size: 0.9rem;
+	max-height: 200px;
+	overflow-y: auto;
+	color: rgba(230, 236, 255, 0.82);
+	line-height: 1.7;
+}
+
+.tc-modal__fields {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.tc-modal__field-label {
+	display: grid;
+	gap: 8px;
+	font-size: 0.88rem;
+	font-weight: 600;
+	color: #f8fbff;
+}
+
+.tc-modal__textarea {
+	width: 100%;
+	background: rgba(8, 14, 26, 0.9);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 14px;
+	color: #e6ecff;
+	padding: 14px 16px;
+	resize: vertical;
+	font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+	font-size: 0.88rem;
+	line-height: 1.65;
+	outline: none;
+	transition: border-color 150ms, box-shadow 150ms;
+	min-height: 160px;
+}
+
+.tc-modal__textarea:focus {
+	border-color: rgba(125, 211, 252, 0.45);
+	box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.1);
+}
+
+.tc-modal__actions {
+	display: flex;
+	gap: 10px;
+	justify-content: flex-end;
+	padding-top: 4px;
+}
+
+.tc-modal__btn {
+	padding: 11px 20px;
+	border-radius: 14px;
+	font-weight: 700;
+	font-size: 0.9rem;
+	cursor: pointer;
+	transition: transform 140ms, box-shadow 140ms, background 140ms;
+	border: none;
+}
+
+.tc-modal__btn--cancel {
+	background: rgba(255, 255, 255, 0.06);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	color: rgba(230, 236, 255, 0.8);
+}
+
+.tc-modal__btn--cancel:hover {
+	background: rgba(255, 255, 255, 0.1);
+}
+
+.tc-modal__btn--save {
+	background: linear-gradient(135deg, #7dd3fc 0%, #c084fc 100%);
+	color: #06101c;
+}
+
+.tc-modal__btn--save:hover:not(:disabled) {
+	transform: translateY(-1px);
+	box-shadow: 0 10px 28px rgba(125, 211, 252, 0.22);
+}
+
+.tc-modal__btn--save:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+	.tc-modal {
+		padding: 22px 18px;
+	}
+
+	.tc-modal__actions {
+		flex-direction: column;
+	}
+
+	.tc-modal__btn {
+		width: 100%;
+		text-align: center;
+	}
+}

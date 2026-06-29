@@ -1,7 +1,11 @@
 import { Link } from 'react-router-dom';
 
-// Strip HTML tags produced by Quill for plain-text display in list cards
-const stripHtml = (html = '') => html.replace(/<[^>]*>/g, '').trim();
+// Strip HTML tags and decode entities (e.g. &nbsp; → space) from Quill output
+const stripHtml = (html = '') => {
+	const div = document.createElement('div');
+	div.innerHTML = html;
+	return (div.textContent || div.innerText || '').trim();
+};
 
 export const QuestionList = ({ questions, basePath = '/questions' }) => {
 	return (
@@ -19,4 +23,4 @@ export const QuestionList = ({ questions, basePath = '/questions' }) => {
 			))}
 		</ul>
 	);
-};
+};

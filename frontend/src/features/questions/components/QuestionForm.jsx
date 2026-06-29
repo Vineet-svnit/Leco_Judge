@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
+import Editor from '@monaco-editor/react';
 
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
@@ -33,9 +34,11 @@ const DEFAULT_FORM = {
 	topic: '',
 	constraints: '',
 	languages: [{ lang: 'cpp', codeSnippet: '', classSnippet: '' }],
+	officialSolution: '',
 	timeLimit: '',
 	memoryLimit: '',
 	examples: [DEFAULT_EXAMPLE],
+	testcases: [],
 };
 
 const normalizeExample = (example = {}) => ({
@@ -52,6 +55,7 @@ const normalizeForm = (value = DEFAULT_FORM) => {
 		timeLimit: value?.timeLimit ?? '',
 		memoryLimit: value?.memoryLimit ?? '',
 		image: value?.image ?? '',
+		officialSolution: value?.officialSolution ?? '',
 		languages: langs.map((l) => ({
 			lang: l.lang,
 			codeSnippet: l.codeSnippet || '',
@@ -60,6 +64,9 @@ const normalizeForm = (value = DEFAULT_FORM) => {
 		examples: (value?.examples?.length ? value.examples : DEFAULT_FORM.examples).map(
 			normalizeExample
 		),
+		testcases: (value?.testcases || []).map((tc) => ({
+			input: tc.input || '',
+		})),
 	};
 };
 
@@ -115,6 +122,12 @@ export const QuestionForm = ({ initialValue = DEFAULT_FORM, onSubmit, submitLabe
 	const [form, setForm] = useState(() => normalizeForm(initialValue));
 	const [uploadStatus, setUploadStatus] = useState({});
 	const [globalUploadError, setGlobalUploadError] = useState('');
+	const [tcModal, setTcModal] = useState({ open: false, input: '', editIndex: null });
+
+	useEffect(() => {
+		document.body.style.overflow = tcModal.open ? 'hidden' : '';
+		return () => { document.body.style.overflow = ''; };
+	}, [tcModal.open]);
 
 	useEffect(() => {
 		setForm(normalizeForm(initialValue));
@@ -148,6 +161,38 @@ export const QuestionForm = ({ initialValue = DEFAULT_FORM, onSubmit, submitLabe
 		setForm((current) => ({
 			...current,
 			examples: current.examples.filter((_, exampleIndex) => exampleIndex !== index),
+		}));
+	};
+
+	const openTcModal = (editIndex = null) => {
+		if (editIndex !== null) {
+			const tc = form.testcases[editIndex];
+			setTcModal({ open: true, input: tc.input, editIndex });
+		} else {
+			setTcModal({ open: true, input: '', editIndex: null });
+		}
+	};
+
+	const closeTcModal = () => setTcModal({ open: false, input: '', editIndex: null });
+
+	const saveTcModal = () => {
+		const { input, editIndex } = tcModal;
+		setForm((current) => {
+			const testcases = [...current.testcases];
+			if (editIndex !== null) {
+				testcases[editIndex] = { input };
+			} else {
+				testcases.push({ input });
+			}
+			return { ...current, testcases };
+		});
+		closeTcModal();
+	};
+
+	const removeTestcase = (index) => {
+		setForm((current) => ({
+			...current,
+			testcases: current.testcases.filter((_, i) => i !== index),
 		}));
 	};
 
@@ -282,37 +327,109 @@ export const QuestionForm = ({ initialValue = DEFAULT_FORM, onSubmit, submitLabe
 					<h3>C++ Code &amp; Class Snippets</h3>
 				</div>
 				{form.languages.map((langData, index) => (
-					<div key={langData.lang} className="lang-snippet-container" style={{ display: 'grid', gap: '14px' }}>
-						<label>
-							C++ Code Snippet (Runner Wrapper)
-							<textarea
+				<div key={langData.lang} className="lang-snippet-container" style={{ display: 'grid', gap: '14px' }}>
+						<div>
+							<label style={{ display: 'block', marginBottom: '6px' }}>
+								C++ Code Snippet (Runner Wrapper)
+							</label>
+							<Editor
+								height="220px"
+								language="cpp"
+								theme="vs-dark"
 								value={langData.codeSnippet}
-								onChange={(e) => {
+								onChange={(value) => {
 									const updated = [...form.languages];
-									updated[index] = { ...updated[index], codeSnippet: e.target.value };
+									updated[index] = { ...updated[index], codeSnippet: value ?? '' };
 									setForm((curr) => ({ ...curr, languages: updated }));
 								}}
-								required
-								placeholder="Paste C++ compilation boilerplate. Use /* LECO_USER_CODE */ where the user's solution should be injected."
-								style={{ minHeight: '120px' }}
+								options={{
+									minimap: { enabled: false },
+									fontSize: 13,
+									scrollBeyondLastLine: false,
+									wordWrap: 'on',
+								}}
 							/>
-						</label>
-						<label>
-							C++ Class Snippet (User Starter Code)
-							<textarea
+						</div>
+						<div>
+							<label style={{ display: 'block', marginBottom: '6px' }}>
+								C++ Class Snippet (User Starter Code)
+							</label>
+							<Editor
+								height="220px"
+								language="cpp"
+								theme="vs-dark"
 								value={langData.classSnippet}
-								onChange={(e) => {
+								onChange={(value) => {
 									const updated = [...form.languages];
-									updated[index] = { ...updated[index], classSnippet: e.target.value };
+									updated[index] = { ...updated[index], classSnippet: value ?? '' };
 									setForm((curr) => ({ ...curr, languages: updated }));
 								}}
-								required
-								placeholder="Paste C++ starter code function/class signature that the user sees in their editor."
-								style={{ minHeight: '120px' }}
+								options={{
+									minimap: { enabled: false },
+									fontSize: 13,
+									scrollBeyondLastLine: false,
+									wordWrap: 'on',
+								}}
 							/>
-						</label>
+						</div>
 					</div>
 				))}
+			</section>
+
+			{/* Official Solution — admin only, not exposed to users */}
+			<section className="question-language-snippets">
+				<div className="section-heading" style={{ margin: '20px 0 10px' }}>
+					<h3>Official Solution (admin only)</h3>
+				</div>
+				<Editor
+					height="260px"
+					language="cpp"
+					theme="vs-dark"
+					value={form.officialSolution}
+					onChange={(value) => setForm((curr) => ({ ...curr, officialSolution: value ?? '' }))}
+					options={{
+						minimap: { enabled: false },
+						fontSize: 13,
+						scrollBeyondLastLine: false,
+						wordWrap: 'on',
+					}}
+				/>
+			</section>
+
+			{/* Testcases */}
+			<section className="question-testcases">
+				<div className="question-examples-header">
+					<h2>Testcases</h2>
+					<button type="button" onClick={() => openTcModal()}>
+						Add testcase
+					</button>
+				</div>
+				{form.testcases.length === 0 ? (
+					<p className="empty-state">No testcases added yet.</p>
+				) : (
+					<table className="testcases-table">
+						<thead>
+							<tr>
+								<th>#</th>
+								<th>Input</th>
+								<th></th>
+							</tr>
+						</thead>
+						<tbody>
+							{form.testcases.map((tc, index) => (
+								<tr key={index}>
+									<td>{index + 1}</td>
+									<td><pre>{tc.input}</pre></td>
+									<td>
+										<button type="button" onClick={() => openTcModal(index)}>Edit</button>
+										{' '}
+										<button type="button" onClick={() => removeTestcase(index)}>Remove</button>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				)}
 			</section>
 
 			<label>
@@ -416,6 +533,57 @@ export const QuestionForm = ({ initialValue = DEFAULT_FORM, onSubmit, submitLabe
 			) : null}
 
 			<button type="submit">{submitLabel}</button>
+
+			{/* Testcase modal */}
+			{tcModal.open ? (
+				<div className="tc-modal-overlay" onClick={closeTcModal}>
+					<div className="tc-modal" onClick={(e) => e.stopPropagation()}>
+						<div className="tc-modal__header">
+							<span className="tc-modal__eyebrow">Testcase</span>
+							<h2 className="tc-modal__title">
+								{tcModal.editIndex !== null ? `Edit testcase #${tcModal.editIndex + 1}` : 'Add testcase'}
+							</h2>
+							<button className="tc-modal__close" type="button" onClick={closeTcModal} aria-label="Close">✕</button>
+						</div>
+
+						<div className="tc-modal__question-ref">
+							<p className="tc-modal__question-label">Question statement</p>
+							<div
+								className="rich-content tc-modal__question-body"
+								dangerouslySetInnerHTML={{ __html: form.statement }}
+							/>
+						</div>
+
+						<div className="tc-modal__fields">
+							<label className="tc-modal__field-label">
+								Input
+								<textarea
+									className="tc-modal__textarea"
+									value={tcModal.input}
+									onChange={(e) => setTcModal((m) => ({ ...m, input: e.target.value }))}
+									placeholder="Enter testcase input"
+									rows={8}
+									autoFocus
+								/>
+							</label>
+						</div>
+
+						<div className="tc-modal__actions">
+							<button className="tc-modal__btn tc-modal__btn--cancel" type="button" onClick={closeTcModal}>
+								Cancel
+							</button>
+							<button
+								className="tc-modal__btn tc-modal__btn--save"
+								type="button"
+								onClick={saveTcModal}
+								disabled={!tcModal.input.trim()}
+							>
+								{tcModal.editIndex !== null ? 'Update' : 'Add'} testcase
+							</button>
+						</div>
+					</div>
+				</div>
+			) : null}
 		</form>
 	);
 };

@@ -11,6 +11,7 @@ const mapQuestionPayload = (body, adminId) => ({
 	examples: body.examples || [],
 	constraints: body.constraints || '',
 	languages: body.languages || [],
+	officialSolution: body.officialSolution || '',
 	timeLimit: body.timeLimit,
 	memoryLimit: body.memoryLimit,
 });
@@ -37,7 +38,14 @@ export const getQuestionById = async (req, res) => {
 		return res.status(404).json({ message: 'Question not found' });
 	}
 
-	return res.json({ question });
+	// officialSolution is admin-only — strip it from public responses
+	const isAdmin = req.user?.role === 'ADMIN';
+	const data = question.toObject();
+	if (!isAdmin) {
+		delete data.officialSolution;
+	}
+
+	return res.json({ question: data });
 };
 
 export const createQuestion = async (req, res) => {
