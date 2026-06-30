@@ -306,54 +306,350 @@
 	color: rgba(230, 236, 255, 0.88);
 }
 
-.code-editor-panel {
-	display: grid;
-	grid-template-rows: auto minmax(520px, 1fr);
-	gap: 14px;
-	min-height: calc(100svh - 140px);
-	padding: 22px;
-	border-radius: 24px;
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	background: rgba(6, 10, 18, 0.72);
-	backdrop-filter: blur(18px);
-	box-shadow: 0 24px 70px rgba(0, 0, 0, 0.22);
+/* ── New split layout for question page ─────────────────────── */
+
+/* Full-viewport shell — navbar + layout below, no page scroll */
+.qs-shell {
+	display: flex;
+	flex-direction: column;
+	height: 100svh;
+	overflow: hidden;
+	padding: 12px 12px 12px;
+	background:
+		radial-gradient(circle at top left, rgba(79, 209, 197, 0.14), transparent 25%),
+		radial-gradient(circle at right top, rgba(59, 130, 246, 0.14), transparent 28%),
+		linear-gradient(180deg, #08101f 0%, #0b1428 100%);
 }
 
-.code-editor-panel__header {
+.qs-shell .app-navbar {
+	width: 100%;
+	max-width: none;
+	margin-bottom: 10px;
+	flex-shrink: 0;
+}
+
+/* Main two-pane area — fills remaining height */
+.qs-layout {
+	display: flex;
+	flex-direction: row;
+	flex: 1;
+	min-height: 0;
+	gap: 0;
+	overflow: hidden;
+}
+
+/* ── Left pane ── */
+.qs-left {
+	flex-shrink: 0;
+	min-width: 280px;
+	display: flex;
+	flex-direction: column;
+	border-radius: 16px;
+	border: 1px solid rgba(255, 255, 255, 0.14);
+	background: rgba(6, 10, 18, 0.72);
+	backdrop-filter: blur(16px);
+	overflow: hidden;
+}
+
+.qs-left__scroll {
+	flex: 1;
+	overflow-y: auto;
+	padding: 20px;
+	display: grid;
+	gap: 18px;
+	align-content: start;
+}
+
+/* ── Dividers ── */
+.qs-divider {
+	flex-shrink: 0;
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
+	justify-content: center;
+	background: transparent;
+	transition: background 120ms;
+	z-index: 10;
+}
+
+.qs-divider--h {
+	width: 6px;
+	cursor: col-resize;
+	flex-direction: column;
+}
+
+.qs-divider--v {
+	height: 6px;
+	cursor: row-resize;
+	flex-direction: row;
+	background: rgba(96, 165, 250, 0.12);
+	border-top: 1px solid rgba(96, 165, 250, 0.28);
+	border-bottom: 1px solid rgba(96, 165, 250, 0.28);
+}
+
+.qs-divider:hover,
+.qs-divider:active {
+	background: rgba(125, 211, 252, 0.12);
+}
+
+.qs-divider__grip {
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.18);
+}
+
+.qs-divider--h .qs-divider__grip {
+	width: 2px;
+	height: 36px;
+}
+
+.qs-divider--v .qs-divider__grip {
+	height: 2px;
+	width: 36px;
+}
+
+/* ── Right pane ── */
+.qs-right {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+/* Editor panel */
+.qs-editor-panel {
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	border-radius: 16px 16px 0 0;
+	border: 1px solid rgba(96, 165, 250, 0.28);
+	border-bottom: none;
+	background: rgba(6, 10, 18, 0.80);
+	backdrop-filter: blur(16px);
+	overflow: hidden;
+	min-height: 100px;
+}
+
+.qs-editor-header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 14px;
+	border-bottom: 1px solid rgba(96, 165, 250, 0.2);
+	flex-shrink: 0;
+}
+
+.qs-editor-header__label {
+	font-size: 0.82rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	color: rgba(230, 236, 255, 0.55);
+}
+
+.lang-selector {
+	background: rgba(255, 255, 255, 0.06);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 8px;
+	color: #f8fbff;
+	padding: 5px 10px;
+	font-size: 0.82rem;
+	cursor: pointer;
+}
+
+.qs-editor-header__actions {
+	display: flex;
+	gap: 8px;
+	margin-left: auto;
+}
+
+.qs-btn-sm {
+	padding: 7px 16px !important;
+	border-radius: 10px !important;
+	font-size: 0.82rem !important;
+}
+
+.qs-monaco-wrap {
+	flex: 1;
+	min-height: 0;
+	overflow: hidden;
+}
+
+/* Console panel */
+.qs-console-panel {
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	border-radius: 0 0 16px 16px;
+	border: 1px solid rgba(96, 165, 250, 0.28);
+	border-top: none;
+	background: rgba(8, 12, 22, 0.85);
+	backdrop-filter: blur(16px);
+	overflow: hidden;
+	min-height: 80px;
+}
+
+.qs-console-body {
+	flex: 1;
+	overflow-y: auto;
+	padding: 14px 16px;
+}
+
+/* Console tabs (shared) */
+.console-panel__tabs {
+	display: flex;
+	gap: 2px;
+	padding: 8px 12px 0;
+	border-bottom: 1px solid rgba(96, 165, 250, 0.15);
+	flex-shrink: 0;
+}
+
+.console-tab {
+	padding: 6px 14px;
+	border: none;
+	background: transparent;
+	color: rgba(230, 236, 255, 0.5);
+	font-size: 0.82rem;
+	font-weight: 600;
+	border-bottom: 2px solid transparent;
+	cursor: pointer;
+	transition: color 140ms, border-color 140ms;
+	margin-bottom: -1px;
+}
+
+.console-tab:hover {
+	color: rgba(230, 236, 255, 0.85);
+}
+
+.console-tab--active {
+	color: #f8fbff;
+	border-bottom-color: #7dd3fc;
+}
+
+.console-tab--loading {
+	color: #7dd3fc;
+}
+
+/* Console internals */
+.console-testcases-list,
+.console-history {
+	display: grid;
 	gap: 12px;
 }
 
-.code-editor-panel__header h2 {
+.console-testcase-item {
+	padding: 12px 14px;
+	border-radius: 12px;
+	background: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.console-testcase-item h4 {
+	margin: 0 0 8px;
+	font-size: 0.85rem;
+	color: rgba(230, 236, 255, 0.7);
+}
+
+.console-io-row {
+	display: grid;
+	gap: 4px;
+	margin-bottom: 8px;
+	font-size: 0.82rem;
+}
+
+.console-io-row pre {
 	margin: 0;
-	font-size: 1.3rem;
+	padding: 8px 10px;
+	border-radius: 8px;
+	background: rgba(8, 14, 26, 0.85);
+	font-size: 0.82rem;
+	white-space: pre-wrap;
 }
 
-.code-editor-panel__header span {
-	color: rgba(230, 236, 255, 0.68);
-	font-size: 0.92rem;
+.console-loading {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 16px 0;
+	color: rgba(230, 236, 255, 0.7);
 }
 
-.code-editor-panel__editor {
+.history-table {
 	width: 100%;
-	min-height: 0;
-	padding: 18px;
-	border-radius: 20px;
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	background: rgba(8, 14, 26, 0.95);
-	color: #f8fbff;
-	font: 500 0.95rem/1.7 "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-	resize: none;
-	outline: none;
-	white-space: pre;
-	overflow: auto;
+	border-collapse: collapse;
+	font-size: 0.82rem;
 }
 
-.code-editor-panel__editor:focus {
-	border-color: rgba(125, 211, 252, 0.45);
-	box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.12);
+.history-table th,
+.history-table td {
+	padding: 8px 12px;
+	text-align: left;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.history-table th {
+	color: rgba(230, 236, 255, 0.5);
+	font-weight: 600;
+	text-transform: uppercase;
+	font-size: 0.72rem;
+	letter-spacing: 0.08em;
+}
+
+.console-logs {
+	padding: 12px 14px;
+	border-radius: 12px;
+	background: rgba(248, 113, 113, 0.06);
+	border: 1px solid rgba(248, 113, 113, 0.15);
+}
+
+.console-logs h5 {
+	margin: 0 0 8px;
+	font-size: 0.78rem;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	color: #fca5a5;
+}
+
+.console-logs pre {
+	margin: 0;
+	font-size: 0.82rem;
+	white-space: pre-wrap;
+	word-break: break-all;
+	color: #fecaca;
+}
+
+.failed-testcase-details {
+	display: grid;
+	gap: 8px;
+}
+
+.failed-testcase-details h5 {
+	margin: 0;
+	font-size: 0.82rem;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	color: rgba(230, 236, 255, 0.55);
+}
+
+.failed-tc-row {
+	display: grid;
+	gap: 4px;
+	font-size: 0.82rem;
+}
+
+.failed-tc-row pre {
+	margin: 0;
+	padding: 8px 10px;
+	border-radius: 8px;
+	background: rgba(8, 14, 26, 0.85);
+	white-space: pre-wrap;
+}
+
+/* ─── question-solver shared styles (used inside qs-left__scroll) ─── */
+
+.qs-question-meta {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
 }
 
 .empty-state {
@@ -685,9 +981,7 @@
 	.question-link span {
 		align-self: flex-start;
 	}
-}
-
-@media (max-width: 640px) {
+}@media (max-width: 640px) {
 	.app-navbar {
 		padding: 14px;
 	}
@@ -1262,4 +1556,68 @@
 .result-metric {
 	font-size: 0.85rem;
 	color: rgba(230, 236, 255, 0.65);
+}
+
+@media (max-width: 960px) {
+	.page-shell {
+		padding: 18px;
+	}
+
+	.app-navbar {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.app-navbar__actions {
+		justify-content: flex-start;
+	}
+
+	.page-header,
+	.page-header--split,
+	.question-detail__top,
+	.question-form,
+	.question-list,
+	.example-grid {
+		grid-template-columns: 1fr;
+	}
+
+	/* On mobile the split layout stacks vertically */
+	.qs-shell {
+		height: auto;
+		overflow: auto;
+	}
+
+	.qs-layout {
+		flex-direction: column;
+		height: auto;
+	}
+
+	.qs-left {
+		width: 100% !important;
+		height: auto;
+		max-height: 60vh;
+	}
+
+	.qs-right {
+		width: 100% !important;
+		height: 80vh;
+	}
+
+	.qs-divider--h {
+		display: none;
+	}
+
+	.page-header,
+	.page-header__actions {
+		align-items: flex-start;
+	}
+
+	.question-link {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+
+	.question-link span {
+		align-self: flex-start;
+	}
 }

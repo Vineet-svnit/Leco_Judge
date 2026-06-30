@@ -260,12 +260,17 @@ No manual resetting is required because the operating system cleans up process m
 
 # Resource Limits
 
-Docker will eventually enforce:
+Implemented.
+
+Docker enforces:
 
 ```text
-Memory Limit
-CPU Limit
+Memory Limit  →  --memory=<N>m  +  --memory-swap=<N>m
+CPU Limit     →  --cpus=1
+Network       →  --network=none
 ```
+
+Memory swap is set equal to memory limit to disable swap completely. This ensures the Docker OOM killer fires at exactly the memory limit, giving a clean exit code 137 which the worker detects as MLE.
 
 Examples:
 
@@ -277,35 +282,46 @@ Examples:
 Used to detect:
 
 ```text
-MLE
-TLE
+MLE  →  exit code 137 (SIGKILL from OOM killer)
+TLE  →  process timeout
+RE   →  non-zero exit (other than 137)
 ```
-
-for malicious or inefficient solutions.
 
 ---
 
 # Worker Responsibilities
 
-Judge Worker will:
+Implemented (submitWorker, runWorker, tcGenWorker).
+
+Judge Worker:
 
 ```text
 Receive Job
 ↓
-Create Source File
+Load data from MongoDB
 ↓
-Create Container
+Build final source (replace LECO_USER_CODE)
 ↓
-Compile
+Write source to host temp dir
 ↓
-Execute Testcases
+Create Container (gcc:13, mounted temp dir)
+↓
+Compile (g++ -O2)
+↓
+Execute Testcases (one process per input)
+↓
+Collect outputs / detect TLE / MLE / RE
+↓
+Compare outputs (using question.comparatorType)
 ↓
 Generate Verdict
 ↓
-Destroy Container
+Save verdict to MongoDB (submit) or return inline (run)
+↓
+Destroy temp dir
 ```
 
-Docker is owned and controlled entirely by the Judge Worker.
+Docker is owned and controlled entirely by the Judge Worker via Node.js `child_process.execFile`.
 
 ---
 
@@ -341,13 +357,17 @@ Processes perform the actual work.
 
 # Future Learning Topics
 
-Need practical familiarity with:
+Covered / in use:
 
-* docker pull
-* docker run
+* docker pull  ✅
+* docker run   ✅
+* Mounts / Volumes  ✅
+* Resource Limits   ✅
+
+Still to explore practically:
+
 * docker ps
 * docker stop
 * docker rm
-* Dockerfile
-* Mounts / Volumes
-* Resource Limits
+* Dockerfile (currently using pre-built gcc:13 image directly)
+* Multi-stage builds
