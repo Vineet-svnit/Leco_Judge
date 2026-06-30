@@ -1,10 +1,18 @@
+import { QueueEvents } from 'bullmq';
+
 import Submission from '../models/submission.model.js';
 import Question from '../models/question.model.js';
 import submitQueue from '../queues/submitQueue.js';
 import runQueue from '../queues/runQueue.js';
+import { createRedisConnection } from '../config/redis.js';
+
+// One shared QueueEvents instance per queue — created once, reused across requests.
+// This avoids the race condition where a per-request QueueEvents misses the
+// 'completed' event because the worker finishes before the listener is ready.
+const submitQueueEvents = new QueueEvents('submitQueue', { connection: createRedisConnection() });
+const runQueueEvents = new QueueEvents('runQueue', { connection: createRedisConnection() });
 
 // POST /submissions/submit
-// Saves submission to DB with status PENDING, then enqueues to submitQueue
 export const submitCode = async (req, res) => {
 	try {
 		const { questionId, language, code } = req.body;
@@ -26,18 +34,23 @@ export const submitCode = async (req, res) => {
 			status: 'PENDING',
 		});
 
-		// Enqueue — worker loads full data from MongoDB using submissionId
-		await submitQueue.add('judge', { submissionId: submission._id.toString() });
+		const job = await submitQueue.add('judge', { submissionId: submission._id.toString() });
 
-		return res.status(201).json({ submission });
+		// waitUntilFinished handles the race internally — safe even if worker
+		// completes before this line executes
+		const result = await job.waitUntilFinished(submitQueueEvents);
+
+		return res.status(200).json({
+			submissionId: submission._id,
+			...(typeof result === 'string' ? JSON.parse(result) : result),
+		});
 	} catch (error) {
 		console.error('submitCode error:', error);
-		return res.status(500).json({ message: 'Internal server error.' });
+		return res.status(500).json({ message: 'Internal server error.', detail: error.message });
 	}
 };
 
 // POST /submissions/run
-// No DB record — enqueues directly to runQueue with minimal payload
 export const runCode = async (req, res) => {
 	try {
 		const { questionId, language, code } = req.body;
@@ -51,18 +64,18 @@ export const runCode = async (req, res) => {
 			return res.status(404).json({ message: 'Question not found.' });
 		}
 
-		// Enqueue — worker loads question data (template, examples) from MongoDB
 		const job = await runQueue.add('run', { questionId, language, code });
 
-		return res.status(200).json({ jobId: job.id, message: 'Run job queued.' });
+		const result = await job.waitUntilFinished(runQueueEvents);
+
+		return res.status(200).json(typeof result === 'string' ? JSON.parse(result) : result);
 	} catch (error) {
 		console.error('runCode error:', error);
-		return res.status(500).json({ message: 'Internal server error.' });
+		return res.status(500).json({ message: 'Internal server error.', detail: error.message });
 	}
 };
 
 // GET /submissions/:id
-// Returns a single submission (used for polling status)
 export const getSubmissionStatus = async (req, res) => {
 	try {
 		const submission = await Submission.findById(req.params.id);
@@ -71,7 +84,6 @@ export const getSubmissionStatus = async (req, res) => {
 			return res.status(404).json({ message: 'Submission not found.' });
 		}
 
-		// Only the owner can poll their submission
 		if (submission.userId.toString() !== req.user._id.toString()) {
 			return res.status(403).json({ message: 'Access denied.' });
 		}
@@ -84,7 +96,6 @@ export const getSubmissionStatus = async (req, res) => {
 };
 
 // GET /submissions?questionId=<id>
-// Returns the current user's submission history for a question
 export const getSubmissionHistory = async (req, res) => {
 	try {
 		const { questionId } = req.query;

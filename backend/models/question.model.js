@@ -88,6 +88,11 @@ const questionSchema = new mongoose.Schema(
 			type: String,
 			default: '',
 		},
+		comparatorType: {
+			type: String,
+			enum: ['EXACT_MATCH', 'FLOAT_EPSILON', 'UNORDERED_VECTOR', 'CUSTOM'],
+			default: 'EXACT_MATCH',
+		},
 		timeLimit: {
 			type: Number,
 		},

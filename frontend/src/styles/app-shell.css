@@ -1155,3 +1155,111 @@
 		text-align: center;
 	}
 }
+
+/* ── Console tab loading state ──────────────────────────────── */
+.console-tab--loading {
+	color: #7dd3fc;
+	opacity: 0.85;
+}
+
+/* ── Per-example run results ─────────────────────────────────── */
+.result-panel {
+	display: grid;
+	gap: 14px;
+}
+
+.per-example-results {
+	display: grid;
+	gap: 10px;
+}
+
+.per-example-item {
+	border-radius: 14px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	overflow: hidden;
+}
+
+.per-example-item--pass {
+	border-color: rgba(74, 222, 128, 0.25);
+	background: rgba(74, 222, 128, 0.04);
+}
+
+.per-example-item--fail {
+	border-color: rgba(248, 113, 113, 0.25);
+	background: rgba(248, 113, 113, 0.04);
+}
+
+.per-example-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 14px;
+	font-size: 0.85rem;
+	font-weight: 600;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.per-example-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 0;
+}
+
+.per-example-grid > div {
+	padding: 10px 14px;
+	border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.per-example-grid > div:last-child {
+	border-right: none;
+}
+
+.per-example-grid pre {
+	margin: 4px 0 0;
+	white-space: pre-wrap;
+	word-break: break-all;
+	font-size: 0.82rem;
+}
+
+@media (max-width: 700px) {
+	.per-example-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.per-example-grid > div {
+		border-right: none;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	}
+}
+
+/* ── Verdict tags ────────────────────────────────────────────── */
+.verdict-tag {
+	display: inline-flex;
+	align-items: center;
+	padding: 5px 12px;
+	border-radius: 999px;
+	font-size: 0.8rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.verdict-ac  { background: rgba(74, 222, 128, 0.15);  color: #86efac; }
+.verdict-wa  { background: rgba(248, 113, 113, 0.15); color: #fca5a5; }
+.verdict-tle { background: rgba(251, 191, 36, 0.15);  color: #fcd34d; }
+.verdict-mle { background: rgba(192, 132, 252, 0.15); color: #d8b4fe; }
+.verdict-re  { background: rgba(251, 146, 60, 0.15);  color: #fdba74; }
+.verdict-ce  { background: rgba(125, 211, 252, 0.15); color: #7dd3fc; }
+.verdict-se  { background: rgba(255, 255, 255, 0.08); color: rgba(230, 236, 255, 0.6); }
+
+.verdict-banner {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.result-metric {
+	font-size: 0.85rem;
+	color: rgba(230, 236, 255, 0.65);
+}

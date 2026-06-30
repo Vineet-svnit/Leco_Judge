@@ -1,8 +1,9 @@
 import TestCase from '../models/testcase.model.js';
 import Question from '../models/question.model.js';
+import tcGenQueue from '../queues/tcGenQueue.js';
 
 // POST /admin/questions/:id/testcases/batch
-// Replaces all testcases for a question with the provided array
+// Replaces all testcases for a question, then enqueues output generation
 export const batchSaveTestcases = async (req, res) => {
 	try {
 		const { id: questionId } = req.params;
@@ -26,6 +27,12 @@ export const batchSaveTestcases = async (req, res) => {
 						testcases.map(({ input }) => ({ questionId, input }))
 				  )
 				: [];
+
+		// Enqueue output generation via official solution (if any testcases saved)
+		if (created.length > 0 && question.officialSolution) {
+			await tcGenQueue.add('generate', { questionId: questionId.toString() });
+			console.log(`[testcase.controller] Enqueued tcGen for question ${questionId}`);
+		}
 
 		return res.status(200).json({ testcases: created });
 	} catch (error) {

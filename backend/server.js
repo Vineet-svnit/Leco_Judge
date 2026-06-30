@@ -11,6 +11,7 @@ import questionRoutes from './routes/question.routes.js';
 import submissionRoutes from './routes/submission.routes.js';
 import { startSubmitWorker } from './workers/submitWorker.js';
 import { startRunWorker } from './workers/runWorker.js';
+import { startTcGenWorker } from './workers/tcGenWorker.js';
 import './config/passport.js';
 
 dotenv.config();
@@ -43,6 +44,7 @@ const startServer = async () => {
 		await connectDB();
 		startSubmitWorker();
 		startRunWorker();
+		startTcGenWorker();
 		app.listen(PORT, () => {
 			console.log(`Server running on port ${PORT}`);
 		});

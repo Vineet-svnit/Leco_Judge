@@ -12,6 +12,7 @@ const mapQuestionPayload = (body, adminId) => ({
 	constraints: body.constraints || '',
 	languages: body.languages || [],
 	officialSolution: body.officialSolution || '',
+	comparatorType: body.comparatorType || 'EXACT_MATCH',
 	timeLimit: body.timeLimit,
 	memoryLimit: body.memoryLimit,
 });

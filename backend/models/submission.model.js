@@ -27,7 +27,7 @@ const submissionSchema = new mongoose.Schema(
 		},
 		verdict: {
 			type: String,
-			enum: ['AC', 'WA', 'TLE', 'RE', 'CE', 'SYSTEM_ERROR'],
+			enum: ['AC', 'WA', 'TLE', 'MLE', 'RE', 'CE', 'SYSTEM_ERROR'],
 		},
 		executionTime: {
 			type: Number,

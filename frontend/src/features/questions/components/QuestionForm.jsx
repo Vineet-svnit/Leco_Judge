@@ -35,6 +35,7 @@ const DEFAULT_FORM = {
 	constraints: '',
 	languages: [{ lang: 'cpp', codeSnippet: '', classSnippet: '' }],
 	officialSolution: '',
+	comparatorType: 'EXACT_MATCH',
 	timeLimit: '',
 	memoryLimit: '',
 	examples: [DEFAULT_EXAMPLE],
@@ -56,6 +57,7 @@ const normalizeForm = (value = DEFAULT_FORM) => {
 		memoryLimit: value?.memoryLimit ?? '',
 		image: value?.image ?? '',
 		officialSolution: value?.officialSolution ?? '',
+		comparatorType: value?.comparatorType ?? 'EXACT_MATCH',
 		languages: langs.map((l) => ({
 			lang: l.lang,
 			codeSnippet: l.codeSnippet || '',
@@ -264,6 +266,17 @@ export const QuestionForm = ({ initialValue = DEFAULT_FORM, onSubmit, submitLabe
 				</select>
 			</label>
 
+			{/* Comparator type */}
+			<label>
+				Comparator type
+				<select name="comparatorType" value={form.comparatorType} onChange={handleChange}>
+					<option value="EXACT_MATCH">Exact match</option>
+					<option value="FLOAT_EPSILON">Float epsilon (1e-6)</option>
+					<option value="UNORDERED_VECTOR">Unordered vector</option>
+					<option value="CUSTOM">Custom</option>
+				</select>
+			</label>
+
 			{/* Topic — light toolbar */}
 			<RichField
 				label="Topic"
@@ -379,7 +392,7 @@ export const QuestionForm = ({ initialValue = DEFAULT_FORM, onSubmit, submitLabe
 			{/* Official Solution — admin only, not exposed to users */}
 			<section className="question-language-snippets">
 				<div className="section-heading" style={{ margin: '20px 0 10px' }}>
-					<h3>Official Solution (admin only)</h3>
+					<h3>Official Solution </h3>
 				</div>
 				<Editor
 					height="260px"
