@@ -93,18 +93,24 @@ export const runInDocker = async ({
 					'-w', '/code',
 					DOCKER_IMAGE,
 					'bash', '-c', `./solution < input_${i}.txt`,
-				], { timeout: timeLimitMs + 1000 }); // +1s buffer for container startup
+				], { timeout: timeLimitMs + 1000 });
 
 				stdout = (result.stdout || '').toString().trimEnd();
 			} catch (err) {
-				const elapsed = Date.now() - start;
-				// exit code 137 = SIGKILL from Docker OOM killer → MLE
-				if (err.code === 137) {
-					memoryExceeded = true;
-					verdict = 'MLE';
-				} else if (elapsed >= timeLimitMs || err.killed) {
+				// err.killed = true  → Node's timeout fired          → TLE
+				// err.code === 137   → Docker OOM SIGKILL             → MLE
+				// anything else      → program crashed (RE)           → RE
+				//
+				// NOTE: do NOT use elapsed time to classify TLE.
+				// elapsed includes Docker container startup overhead and will
+				// misclassify instant RE crashes as TLE when timeLimitMs is small.
+				// err.killed is the authoritative signal that Node's timeout fired.
+				if (err.killed) {
 					timedOut = true;
 					verdict = 'TLE';
+				} else if (err.code === 137) {
+					memoryExceeded = true;
+					verdict = 'MLE';
 				} else {
 					runtimeError = true;
 					verdict = 'RE';
