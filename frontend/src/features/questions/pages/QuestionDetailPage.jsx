@@ -251,9 +251,9 @@ function QuestionDetailContent({ user, logout }) {
 
 							<p className="question-solver__inline-meta">
 								<span className={`status-chip status-chip--${question.difficulty.toLowerCase()}`}>{question.difficulty}</span>
-								{question.topic
+								{/* {question.topic
 									? <span className="rich-content rich-content--inline" dangerouslySetInnerHTML={{ __html: question.topic }} />
-									: <span>No topic</span>}
+									: null} */}
 							</p>
 
 							<div className="question-solver__body">
@@ -285,6 +285,20 @@ function QuestionDetailContent({ user, logout }) {
 									? <div className="question-solver__constraints rich-content" dangerouslySetInnerHTML={{ __html: question.constraints }} />
 									: <p className="empty-state">No constraints yet.</p>}
 							</section>
+							{/* Topic — collapsible, at the bottom */}
+							<details className="qs-topic-details">
+								<summary className="qs-topic-summary">
+									<span>Topics</span>
+									<svg className="qs-topic-chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+										<path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+									</svg>
+								</summary>
+								<div className="qs-topic-body">
+									{question.topic
+										? <div className="rich-content" dangerouslySetInnerHTML={{ __html: question.topic }} />
+										: <p className="empty-state">No topics added yet.</p>}
+								</div>
+							</details>
 						</div>
 					</aside>
 

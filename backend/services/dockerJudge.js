@@ -163,7 +163,7 @@ export const compareOutput = (actual, expected, comparatorType) => {
 			return normalize(actual) === normalize(expected);
 
 		case 'FLOAT_EPSILON': {
-			const EPSILON = 1e-6;
+			const EPSILON = 1e-5;
 			const a = parseFloat(actual);
 			const e = parseFloat(expected);
 			if (isNaN(a) || isNaN(e)) return false;

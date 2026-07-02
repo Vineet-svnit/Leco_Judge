@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import Editor from '@monaco-editor/react';
+import { questionApi } from '../services/questionService.js';
 
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
@@ -17,7 +18,7 @@ const FULL_TOOLBAR = [
 ];
 
 // Light toolbar for shorter fields (title, topic)
-const LIGHT_TOOLBAR = [['bold', 'italic', 'underline', 'strike'], ['clean']];
+const LIGHT_TOOLBAR = [['bold', 'italic', 'underline', 'strike'], [{ list: 'ordered' }, { list: 'bullet' }], ['clean']];
 
 const DEFAULT_EXAMPLE = {
 	input: '',
@@ -35,6 +36,8 @@ const DEFAULT_FORM = {
 	constraints: '',
 	languages: [{ lang: 'cpp', codeSnippet: '', classSnippet: '' }],
 	officialSolution: '',
+	validatorCode: '',
+	generatorCode: '',
 	comparatorType: 'EXACT_MATCH',
 	timeLimit: '',
 	memoryLimit: '',
@@ -57,6 +60,8 @@ const normalizeForm = (value = DEFAULT_FORM) => {
 		memoryLimit: value?.memoryLimit ?? '',
 		image: value?.image ?? '',
 		officialSolution: value?.officialSolution ?? '',
+		validatorCode: value?.validatorCode ?? '',
+		generatorCode: value?.generatorCode ?? '',
 		comparatorType: value?.comparatorType ?? 'EXACT_MATCH',
 		languages: langs.map((l) => ({
 			lang: l.lang,
@@ -99,6 +104,194 @@ const uploadToCloudinary = async (file) => {
 
 	return payload.secure_url || payload.url;
 };
+
+// ── AutoTestcaseSection ───────────────────────────────────────────────────────
+// Handles AI-assisted testcase generation entirely within the form.
+// Props:
+//   form          — current form state (read)
+//   setForm       — update form state
+function AutoTestcaseSection({ form, setForm }) {
+	const [genStatus, setGenStatus]         = useState('idle'); // idle | loading | done | error
+	const [genError, setGenError]           = useState('');
+	const [families, setFamilies]           = useState([]);     // [{ name, description, count }]
+	const [familyStatus, setFamilyStatus]   = useState('idle');
+	const [tcStatus, setTcStatus]           = useState('idle');
+	const [tcError, setTcError]             = useState('');
+
+	// Strip HTML tags to get plain text for the AI prompt
+	const stripHtml = (html = '') => {
+		const d = document.createElement('div');
+		d.innerHTML = html;
+		return (d.textContent || d.innerText || '').trim();
+	};
+
+	const plainStatement   = stripHtml(form.statement);
+	const plainConstraints = stripHtml(form.constraints);
+	const plainTopic       = stripHtml(form.topic);
+
+	const preconditionsMet = plainStatement && plainConstraints && plainTopic;
+
+	const handleGenerateGenerator = async () => {
+		setGenStatus('loading');
+		setGenError('');
+		setFamilies([]);
+		try {
+			const res = await questionApi.aiGenerateGenerator({
+				statement:       plainStatement,
+				constraints:     plainConstraints,
+				topic:           plainTopic,
+				officialSolution: form.officialSolution || '',
+			});
+			setForm((f) => ({ ...f, generatorCode: res.generatorCode }));
+			setGenStatus('done');
+		} catch (err) {
+			setGenError(err.message || 'Generation failed.');
+			setGenStatus('error');
+		}
+	};
+
+	const handleDiscoverFamilies = async () => {
+		setFamilyStatus('loading');
+		try {
+			const res = await questionApi.generatorListFamilies(form.generatorCode);
+			setFamilies(res.families.map((f) => ({ ...f, count: 5 })));
+			setFamilyStatus('done');
+		} catch (err) {
+			setFamilyStatus('error');
+		}
+	};
+
+	const handleGenerateTestcases = async () => {
+		setTcStatus('loading');
+		setTcError('');
+		try {
+			const res = await questionApi.generatorRun(
+				form.generatorCode,
+				families.filter((f) => f.count > 0).map(({ name, count }) => ({ name, count }))
+			);
+			const newTcs = res.inputs.map((input) => ({ input }));
+			setForm((f) => ({ ...f, testcases: [...newTcs, ...f.testcases] }));
+			setTcStatus('done');
+		} catch (err) {
+			setTcError(err.message || 'Testcase generation failed.');
+			setTcStatus('error');
+		}
+	};
+
+	return (
+		<section className="ai-tc-section">
+			<div className="section-heading" style={{ margin: '8px 0 14px' }}>
+				<h3>Automated Testcase Generation</h3>
+				<span className="status-chip status-chip--admin" style={{ fontSize: '0.72rem' }}>AI</span>
+			</div>
+
+			{!preconditionsMet && (
+				<p className="ai-tc-precondition-warning">
+					Please complete Statement, Constraints, and Topic before generating testcases.
+				</p>
+			)}
+
+			{/* Step 1: generate the generator */}
+			<div className="ai-tc-step">
+				<div className="ai-tc-step__header">
+					<span className="ai-tc-step__num">1</span>
+					<span>Generate testcase generator code</span>
+					<button
+						type="button"
+						className="ai-tc-btn"
+						disabled={!preconditionsMet || genStatus === 'loading'}
+						onClick={handleGenerateGenerator}
+					>
+						{genStatus === 'loading' ? 'Generating…' : 'Generate Testcase Generator'}
+					</button>
+				</div>
+				{genError && <p className="ai-tc-error">{genError}</p>}
+			</div>
+
+			{/* Generator code editor */}
+			<div style={{ marginBottom: '16px' }}>
+				<label style={{ display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+					Generator Code (C++)
+				</label>
+				<Editor
+					height="240px"
+					language="cpp"
+					theme="vs-dark"
+					value={form.generatorCode}
+					onChange={(v) => setForm((f) => ({ ...f, generatorCode: v ?? '' }))}
+					options={{ minimap: { enabled: false }, fontSize: 13, scrollBeyondLastLine: false, wordWrap: 'on' }}
+				/>
+			</div>
+
+			{/* Step 2: discover families */}
+			<div className="ai-tc-step">
+				<div className="ai-tc-step__header">
+					<span className="ai-tc-step__num">2</span>
+					<span>Discover families (compiles generator in Docker)</span>
+					<button
+						type="button"
+						className="ai-tc-btn"
+						disabled={!form.generatorCode.trim() || familyStatus === 'loading'}
+						onClick={handleDiscoverFamilies}
+					>
+						{familyStatus === 'loading' ? 'Compiling…' : 'Load Families'}
+					</button>
+				</div>
+				{familyStatus === 'error' && (
+					<p className="ai-tc-error">Failed to compile or run generator. Check the code above.</p>
+				)}
+			</div>
+
+			{/* Family count inputs */}
+			{families.length > 0 && (
+				<div className="ai-tc-families">
+					{families.map((fam, i) => (
+						<div key={i} className="ai-tc-family-row">
+							<div className="ai-tc-family-info">
+								<span className="ai-tc-family-name">{fam.name}</span>
+								<span className="ai-tc-family-desc">{fam.description}</span>
+							</div>
+							<input
+								type="number"
+								min="0"
+								max="100"
+								value={fam.count}
+								className="ai-tc-family-count"
+								onChange={(e) => {
+									const updated = [...families];
+									updated[i] = { ...updated[i], count: Number(e.target.value) };
+									setFamilies(updated);
+								}}
+							/>
+						</div>
+					))}
+				</div>
+			)}
+
+			{/* Step 3: generate testcases */}
+			{families.length > 0 && (
+				<div className="ai-tc-step">
+					<div className="ai-tc-step__header">
+						<span className="ai-tc-step__num">3</span>
+						<span>Generate testcases</span>
+						<button
+							type="button"
+							className="ai-tc-btn ai-tc-btn--primary"
+							disabled={tcStatus === 'loading'}
+							onClick={handleGenerateTestcases}
+						>
+							{tcStatus === 'loading' ? 'Generating…' : 'Generate Testcases'}
+						</button>
+					</div>
+					{tcStatus === 'done' && (
+						<p className="ai-tc-success">Testcases added to the list below. Review and save.</p>
+					)}
+					{tcError && <p className="ai-tc-error">{tcError}</p>}
+				</div>
+			)}
+		</section>
+	);
+}
 
 // Reusable Quill field wrapper with label
 function RichField({ label, value, onChange, toolbar = FULL_TOOLBAR, required }) {
@@ -392,7 +585,7 @@ export const QuestionForm = ({ initialValue = DEFAULT_FORM, onSubmit, submitLabe
 			{/* Official Solution — admin only, not exposed to users */}
 			<section className="question-language-snippets">
 				<div className="section-heading" style={{ margin: '20px 0 10px' }}>
-					<h3>Official Solution </h3>
+					<h3>Official Solution</h3>
 				</div>
 				<Editor
 					height="260px"
@@ -407,6 +600,33 @@ export const QuestionForm = ({ initialValue = DEFAULT_FORM, onSubmit, submitLabe
 						wordWrap: 'on',
 					}}
 				/>
+			</section>
+
+			{/* Validator Code — only relevant when comparatorType === CUSTOM */}
+			{form.comparatorType === 'CUSTOM' && (
+				<section className="question-language-snippets">
+					<div className="section-heading" style={{ margin: '20px 0 10px' }}>
+						<h3>Validator Code (C++) — for CUSTOM comparator</h3>
+					</div>
+					<Editor
+						height="220px"
+						language="cpp"
+						theme="vs-dark"
+						value={form.validatorCode}
+						onChange={(value) => setForm((curr) => ({ ...curr, validatorCode: value ?? '' }))}
+						options={{
+							minimap: { enabled: false },
+							fontSize: 13,
+							scrollBeyondLastLine: false,
+							wordWrap: 'on',
+						}}
+					/>
+				</section>
+			)}
+
+			{/* AI-assisted testcase generation */}
+			<section className="question-language-snippets">
+				<AutoTestcaseSection form={form} setForm={setForm} />
 			</section>
 
 			{/* Testcases */}
