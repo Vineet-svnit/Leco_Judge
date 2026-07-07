@@ -179,9 +179,10 @@ Stripped from all public API responses — only returned to ADMIN role.
 Purpose:
 
 * Generate expected outputs for testcases (via tcGenWorker)
-* Validate custom testcases
+* Regenerate outputs if testcase inputs change
 * Future stress testing
 * Future rejudging
+* AI-assisted testcase generation context
 
 ---
 
@@ -216,7 +217,126 @@ tcGenQueue job enqueued
 tcGenWorker runs officialSolution through Docker
 ↓
 Saves output to each TestCase document
+
+Each testcase may optionally store:
+familyId
+which links the testcase to the testcase family that generated it.
+
+Question now also stores:
+families[]
+Each family contains:
+* name
+* description
+* bugTargeted
+* recommendedCount
 ```
+
+---
+
+### AI-Assisted Testcase Generation
+
+---
+
+# AI-Assisted Testcase Generation
+
+Implemented.
+
+Questions may store:
+
+generatorCode
+validatorCode
+families[]
+
+Family Discovery:
+
+AI analyzes:
+
+* Statement
+* Constraints
+* Topic
+* Official Solution (optional)
+
+and generates testcase families.
+
+Each family contains:
+
+* name
+* description
+* bugTargeted
+* recommendedCount
+
+Families are persisted on the Question and survive editing/reloading.
+
+Repeated family discovery is supported.
+
+Existing families are supplied to the AI and it is instructed to generate additional non-overlapping families.
+
+---
+
+## Generator Code
+
+AI generates a standalone deterministic C++ testcase generator.
+
+Required interface:
+
+./generator --list-families
+
+Returns family metadata.
+
+./generator --family <name> --count <N> --seed <S>
+
+Generates reproducible testcases.
+
+Generator code is stored on the Question document.
+
+AI is used only for family discovery and generator creation.
+
+Actual testcase generation is performed by executing the generator.
+
+---
+
+### Testcase Families
+
+---
+
+# Testcase Families
+
+Implemented.
+
+Families are first-class entities associated with a Question.
+
+Purpose:
+
+* Organize generated testcases
+* Preserve testcase intent
+* Enable future analytics
+
+Relationship:
+
+Question
+    ↓
+Families
+    ↓
+TestCases
+
+Example:
+
+duplicates
+    ↓
+TC1
+TC2
+TC3
+
+all-zeros
+    ↓
+TC4
+TC5
+
+Future possibilities:
+
+* Family effectiveness metrics
+* "Which family caused WA?"
+* Family-specific testcase inspection
 
 ---
 
@@ -245,11 +365,6 @@ Output:
 stdout
 stderr
 ```
-
-Future:
-
-Expected output may be generated using the official solution.
-
 ---
 
 ## Submit
@@ -443,8 +558,8 @@ Current options:
 ```text
 EXACT_MATCH       — trims whitespace, normalises line endings, compares strings
 FLOAT_EPSILON     — parses both as float, accepts if |actual - expected| ≤ 1e-6
-UNORDERED_VECTOR  — splits into tokens, sorts both, compares
-CUSTOM            — not yet implemented, falls back to EXACT_MATCH
+CUSTOM            — validatorCode stored on Question. Validator execution not yet
+                    implemented.
 ```
 
 Default: `EXACT_MATCH`

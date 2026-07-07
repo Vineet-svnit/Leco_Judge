@@ -11,6 +11,7 @@ import { Worker } from 'bullmq';
 import { createRedisConnection } from '../config/redis.js';
 import Question from '../models/question.model.js';
 import { runInDocker, buildFinalSource, compareOutput } from '../services/dockerJudge.js';
+import { ensureValidatorBinary, runValidatorBinary } from '../services/customValidator.js';
 
 const processRun = async (job) => {
 	const { questionId, language, code } = job.data;
@@ -48,6 +49,45 @@ const processRun = async (job) => {
 
 	if (result.verdict === 'RE' || result.verdict === 'TLE' || result.verdict === 'MLE') {
 		return { verdict: result.verdict, executionTime: result.executionTime };
+	}
+
+	if (question.comparatorType === 'CUSTOM') {
+		try {
+			if (!question.validatorCode?.trim()) {
+				throw new Error('Custom validator code is missing for this question.');
+			}
+
+			const { binaryPath } = await ensureValidatorBinary(question.validatorCode, question.validatorHash || '');
+			const perExample = [];
+			for (let i = 0; i < examples.length; i++) {
+				const ex = examples[i];
+				const actual = result.outputs[i] ?? '';
+				const validatorResult = await runValidatorBinary({
+					binaryPath,
+					input: ex.input,
+					expectedOutput: actual,
+					actualOutput: ex.output ?? '',
+				});
+				perExample.push({
+					input: ex.input,
+					expectedOutput: ex.output ?? '',
+					actualOutput: actual,
+					passed: validatorResult.passed,
+				});
+			}
+
+			const allPassed = perExample.every((r) => r.passed);
+			return {
+				verdict: allPassed ? 'AC' : 'WA',
+				executionTime: result.executionTime,
+				perExample,
+			};
+		} catch (error) {
+			return {
+				verdict: 'SYSTEM_ERROR',
+				compilerOutput: error.compilerOutput || error.message,
+			};
+		}
 	}
 
 	// Compare against example expected outputs

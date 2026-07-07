@@ -1,9 +1,13 @@
 /**
  * aiService.js
  *
- * AI is used EXACTLY ONCE: to generate the C++ generator program.
- * Everything after that (family discovery, testcase generation) is done
- * by compiling and running the generator in Docker — no further AI calls.
+ * AI is used exactly twice:
+ *   1. discoverFamilies  — understand the problem, return structured family JSON
+ *                          (accepts existingFamilies to avoid repeating concepts)
+ *   2. generateGenerator — produce a C++ generator implementing exactly those families
+ *
+ * Everything after that (compiling, running, output generation) is deterministic
+ * Docker execution with no further AI involvement.
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -23,29 +27,100 @@ const chat = async (prompt) => {
 	return result.response.text().trim();
 };
 
+const stripFences = (raw) =>
+	raw.replace(/^```(?:\w+)?\n?/m, '').replace(/\n?```$/m, '').trim();
+
+// ── AI Call #1: Discover testcase families ────────────────────────────────────
 /**
- * Generate a C++ testcase generator program from problem metadata.
- *
- * The generated program MUST support two CLI modes:
- *
- *   ./generator --list-families
- *     Prints a JSON array to stdout:
- *     [{"name":"small","description":"..."},{"name":"edge","description":"..."},...]
- *
- *   ./generator --family <name> --count <N>
- *     Prints N testcase inputs to stdout, separated by lines containing exactly "---"
- *
- * AI is called only here. Family discovery and generation are done by running
- * the compiled binary in Docker.
+ * Analyse problem metadata and return NEW testcase families.
+ * existingFamilies: families already stored on the question — AI will not repeat them.
+ * Returns: Array<{ name, description, bugTargeted, recommendedCount }>
  */
-export const generateGenerator = async ({ statement, constraints, topic, officialSolution }) => {
+export const discoverFamilies = async ({
+	statement,
+	constraints,
+	topic,
+	officialSolution,
+	existingFamilies = [],
+}) => {
 	const solutionHint = officialSolution
-		? `\nThe official solution is provided for reference (understand output format and edge cases):\n\`\`\`cpp\n${officialSolution}\n\`\`\``
+		? `\nOfficial Solution (for reference only):\n\`\`\`cpp\n${officialSolution}\n\`\`\``
+		: '';
+
+	const existingSection =
+		existingFamilies.length > 0
+			? `\nThe following testcase families already exist for this problem. Do NOT repeat or overlap with them:\n${existingFamilies
+					.map((f) => `- ${f.name}: ${f.description}`)
+					.join(
+						'\n'
+					)}\n\nGenerate ONLY additional non-overlapping families that target different bugs or scenarios.`
+			: '';
+
+	const prompt = `You are an expert competitive programming problem setter.
+
+Given the following problem, identify${existingFamilies.length > 0 ? ' ADDITIONAL' : ' the most important'} testcase families.
+
+Problem Statement:
+${statement}
+
+Constraints:
+${constraints}
+
+Topic: ${topic}
+${solutionHint}
+${existingSection}
+
+Focus on:
+1. Common incorrect solutions and what breaks them.
+2. Structural cases specific to this problem type (e.g. cycle, chain, star, disconnected for graphs).
+3. Complexity attacks (worst-case inputs for naive solutions).
+4. Famous competitive programming corner cases for this problem category.
+5. Correctness edge cases.
+
+Rules:
+- Do NOT use generic names like: small, edge, max, known, stress.
+- Use specific, meaningful, machine-readable names (lowercase, hyphenated if needed).
+  Examples: cycle, self-loop, disconnected, all-same, target-absent, chain, dense-dag, branching-explosion
+- Each family must have a clear "bugTargeted" describing what incorrect solution it breaks.
+- Return 4–8 new families. Never fewer than 2.
+- recommendedCount should be 3–10 per family.
+
+Return ONLY a JSON array. No explanation. No markdown. No trailing text.
+Format:
+[
+  {
+    "name": "cycle",
+    "description": "Directed graph containing a cycle",
+    "bugTargeted": "Solutions that use DFS without visited tracking",
+    "recommendedCount": 5
+  }
+]`;
+
+	const raw = await chat(prompt);
+	return JSON.parse(stripFences(raw));
+};
+
+// ── AI Call #2: Generate the C++ generator implementing exact families ─────────
+/**
+ * Generate a standalone C++ generator that implements EXACTLY the supplied families.
+ * families: Array<{ name, description, bugTargeted, recommendedCount }>
+ */
+export const generateGenerator = async ({
+	statement,
+	constraints,
+	topic,
+	officialSolution,
+	families,
+}) => {
+	const familiesJson = JSON.stringify(families, null, 2);
+
+	const solutionHint = officialSolution
+		? `\nOfficial Solution (understand input/output format and edge cases):\n\`\`\`cpp\n${officialSolution}\n\`\`\``
 		: '';
 
 	const prompt = `You are an expert competitive programming problem setter.
 
-Write a standalone C++ testcase generator program for the problem below.
+Implement a standalone C++ testcase generator for the problem below.
 
 Problem Statement:
 ${statement}
@@ -57,55 +132,51 @@ Topic: ${topic}
 ${solutionHint}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REQUIRED CLI INTERFACE — THIS IS MANDATORY
+TESTCASE FAMILIES — IMPLEMENT THESE EXACTLY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-The program must support exactly two invocation modes:
+The following families have been pre-selected. You MUST:
+1. Implement every family listed below.
+2. Do NOT invent new families.
+3. Do NOT merge families.
+4. Do NOT hide families under generic categories.
+
+Families:
+${familiesJson}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REQUIRED CLI INTERFACE — MANDATORY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 MODE 1 — List families:
   ./generator --list-families
-  Prints to stdout a JSON array (and nothing else) like:
-  [{"name":"small","description":"Minimum constraints and sanity checks","serialNo":1},{"name":"edge","description":"Boundary inputs","serialNo":2},{"name":"max","description":"Maximum constraint stress cases","serialNo":3},{"name":"known","description":"Famous hand-crafted edge cases""serialNo":4}]
+  Prints to stdout a JSON array (nothing else):
+  [{"name":"cycle","description":"...","recommendedCount":5}, ...]
 
   Rules:
-  - Always include "small", "edge", "max" as family names at minimum. Keep "known" (optional only when actually meaningful).
-  - Add any problem-specific families (e.g. "duplicates", "sorted", "chain", "star").
-	If a problem naturally contains important structural families
-	(chain, star, cycle, disconnected, dense-dag),
-	expose them as separate families rather than hiding them under edge/max.
-  - Family names must be lowercase, single words or hyphenated (machine-readable).
-  - Output must be valid JSON. No newlines inside the JSON. No trailing text.
+  - The names MUST exactly match the family names supplied above.
+  - Output must be valid JSON, single line, no trailing text.
 
 MODE 2 — Generate testcases:
-  ./generator --family <name> --count <N> --seed 123
+  ./generator --family <name> --count <N> --seed <S>
   Prints N testcase inputs to stdout.
-  Each testcase is separated by a line containing exactly three dashes: ---
-  The last testcase does NOT need a trailing "---".
+  Separates each testcase with a line containing exactly: ---
+  Last testcase does NOT need a trailing ---.
 
   Rules:
-  - Generate exactly N inputs for the requested family.
-  - Use seeded randomness so output is reproducible.
-  - Do NOT output anything except the testcase inputs and "---" separators.
-  - Same family : Same count : Same seed
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-FAMILY REQUIREMENTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-small:   Minimum/tiny constraint values, single elements, empty inputs where valid.
-edge:    Boundary values, all-same, sorted, reverse-sorted, zeros, negatives.
-max:     Maximum constraint values, performance stress, worst-case sizes.
-known:   Famous hand-crafted cases specific to this problem type (sorted array for binary search, star graph for BFS, etc.)
-Any additional families you deem necessary for this problem.
+  - Generate exactly N inputs for the named family.
+  - Use the seed S for all random number generation (deterministic).
+  - Output ONLY testcase inputs and --- separators. Nothing else.
+  - Each family must generate testcases targeting the bugTargeted behaviour.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- Return ONLY the raw C++ source code.
-- No markdown fences. No explanation. No comments outside the code itself.
-- The program must compile with: g++ -O2 -o generator generator.cpp
-- Parse argc/argv to detect --list-families and --family / --count flags.`;
+- Return ONLY raw C++ source code.
+- No markdown fences. No explanation. No comments outside the code.
+- Must compile with: g++ -O2 -o generator generator.cpp
+- Parse argc/argv for --list-families, --family, --count, --seed flags.`;
 
 	const raw = await chat(prompt);
-	return raw.replace(/^```(?:cpp)?\n?/m, '').replace(/\n?```$/m, '').trim();
+	return stripFences(raw);
 };

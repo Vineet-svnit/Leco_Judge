@@ -14,6 +14,7 @@ import Submission from '../models/submission.model.js';
 import Question from '../models/question.model.js';
 import TestCase from '../models/testcase.model.js';
 import { runInDocker, buildFinalSource, compareOutput } from '../services/dockerJudge.js';
+import { ensureValidatorBinary, runValidatorBinary } from '../services/customValidator.js';
 
 const processSubmit = async (job) => {
 	const { submissionId } = job.data;
@@ -87,6 +88,56 @@ const processSubmit = async (job) => {
 	}
 
 	// Compare outputs
+	if (question.comparatorType === 'CUSTOM') {
+		try {
+			if (!question.validatorCode?.trim()) {
+				throw new Error('Custom validator code is missing for this question.');
+			}
+
+			const { binaryPath } = await ensureValidatorBinary(question.validatorCode, question.validatorHash || '');
+			let finalVerdict = 'AC';
+			let firstFailedTestCase = null;
+
+			for (let i = 0; i < testcases.length; i++) {
+				const tc = testcases[i];
+				const userOutput = result.outputs[i] ?? '';
+				const validatorResult = await runValidatorBinary({
+					binaryPath,
+					input: tc.input,
+					expectedOutput: userOutput,
+					actualOutput: tc.output ?? '',
+				});
+
+				if (!validatorResult.passed) {
+					finalVerdict = 'WA';
+					firstFailedTestCase = {
+						input: tc.input,
+						expectedOutput: tc.output ?? '',
+						actualOutput: userOutput,
+					};
+					break;
+				}
+			}
+
+			await Submission.findByIdAndUpdate(submissionId, {
+				verdict: finalVerdict,
+				executionTime: result.executionTime,
+				completedAt: new Date(),
+				...(firstFailedTestCase && { firstFailedTestCase }),
+			});
+
+			console.log(`[submitWorker] Submission ${submissionId} → ${finalVerdict}`);
+			return { verdict: finalVerdict, executionTime: result.executionTime, firstFailedTestCase };
+		} catch (error) {
+			await Submission.findByIdAndUpdate(submissionId, {
+				verdict: 'SYSTEM_ERROR',
+				compilerOutput: error.compilerOutput || error.message,
+				completedAt: new Date(),
+			});
+			return { verdict: 'SYSTEM_ERROR', compilerOutput: error.compilerOutput || error.message };
+		}
+	}
+
 	let finalVerdict = 'AC';
 	let firstFailedTestCase = null;
 

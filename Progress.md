@@ -141,20 +141,119 @@ Admin sees question list and can open questions for editing.
 * After saving, a `tcGenQueue` job is enqueued automatically
 * `tcGenWorker` runs the official solution through Docker and saves the generated output to each testcase
 
-### Comparator Type
+### Comparator System
 
-Each question has a `comparatorType` field:
+Implemented:
 
-```
-EXACT_MATCH       — default, trims and compares strings
-FLOAT_EPSILON     — abs diff ≤ 1e-6
-UNORDERED_VECTOR  — sorted token comparison
-CUSTOM            — falls back to EXACT_MATCH (not yet implemented)
-```
+EXACT_MATCH
 
-Selected by admin via dropdown in the question form.
+Trim + string comparison
+
+FLOAT_EPSILON
+
+abs(a - b) <= 1e-6
+
+Tokenize
+↓
+Sort
+↓
+Compare
+
+CUSTOM
+
+Storage and question support implemented.
+
+Validator execution layer pending.
 
 ---
+
+### AI-Assisted Testcase Generation
+
+Implemented.
+
+### Family Discovery 
+
+Admin can generate testcase families using AI.
+
+Each family contains:
+
+name
+description
+bugTargeted
+recommendedCount
+
+Example:
+
+duplicates
+all-zeros
+max-size
+branching-explosion
+cycle
+checkerboard
+
+Families are now persisted on the Question document.
+
+### Persistent Families (to fix ui)
+
+Question schema now stores:
+
+families: [
+  {
+    _id,
+    name,
+    description,
+    bugTargeted,
+    recommendedCount,
+    source
+  }
+]
+
+Families survive:
+
+Refresh
+Question edit
+Question reload
+
+### Repeated Discovery (fix ui)
+
+Admin can click Discover Families multiple times.
+
+Existing families are sent to AI and AI is instructed to generate additional non-overlapping families rather than replacing everything.
+
+### Generator Code
+
+AI generates a standalone deterministic C++ testcase generator.
+
+Generator is stored as:
+
+generatorCode
+
+inside the question.
+
+Generator supports:
+
+./generator --list-families
+
+and
+
+./generator --family <name> --count <N> --seed <S>
+Family-linked Testcases
+
+Testcases now store:
+
+familyId
+
+allowing traceability:
+
+Family
+↓
+Generated Testcases
+
+This enables:
+
+Family persistence
+Future family analytics
+Future "which family failed this solution" tracking
 
 ## Judge System
 
@@ -216,21 +315,25 @@ Resource limits per container:
 
 ---
 
-## UI Status
+### UI Status
 
 Implemented:
 
-* Main question list (HTML entity decoding fixed)
-* Question detail page — draggable 3-pane split layout
-* Monaco code editor (user + admin)
-* Admin dashboard
-* Admin edit workflow with Monaco for code/solution fields
-* Quill question editor
-* Testcase modal in admin form
-* Run result panel (per-example breakdown)
-* Submit result panel (verdict + first failed testcase)
-* Submission history tab
-* Verdict tags with colour coding (AC/WA/TLE/MLE/RE/CE/SE)
+Main question list (HTML entity decoding fixed)
+Question detail page
+Monaco code editor (user + admin)
+Admin dashboard
+Admin edit workflow with Monaco for code fields
+Quill question editor
+Testcase modal in admin form
+Run result panel
+Submit result panel
+Submission history tab
+Verdict tags with colour coding
+Draggable split-pane layout
+AI testcase generation workflow
+Family management UI (yet to be wired correctly)
+Generator management UI
 
 ---
 
@@ -253,6 +356,13 @@ Implemented:
 * Production OAuth configuration
 * Redis hosted instance
 
+### Analytics
+
+Planned:
+Family effectiveness tracking
+Acceptance rate tracking
+Runtime distributions
+Family-specific failure analysis
 ---
 
 ## Architecture Notes
@@ -303,6 +413,23 @@ Runs official solution through Docker
 ↓
 Saves output to each TestCase document
 ```
+### AI Testcase Generation
+
+Question Metadata
+↓
+AI Family Discovery
+↓
+Persist Families
+↓
+AI Generator Creation
+↓
+Store generatorCode
+↓
+Generate Testcases
+↓
+Store familyId linkage
+↓
+tcGenWorker generates outputs
 
 ---
 
@@ -310,23 +437,29 @@ Saves output to each TestCase document
 
 Current milestone completed:
 
-* Google OAuth
-* User Roles
-* Protected Admin Routes
-* Question CRUD
-* Monaco Editor Integration (user + admin)
-* Quill Integration
-* LeetCode-style Question View
-* Template-based Code Injection using LECO_USER_CODE
-* Submission model + API (run & submit)
-* BullMQ + Redis queue system (submitQueue, runQueue, tcGenQueue)
-* Docker-based code execution (gcc:13)
-* Verdict generation (AC / WA / CE / RE / TLE / MLE / SYSTEM_ERROR)
-* Comparator types (EXACT_MATCH, FLOAT_EPSILON, UNORDERED_VECTOR)
-* Testcase management in admin form with auto output generation
-* Official solution storage (admin-only)
-* Draggable split-pane question page layout
-* Independent Run / Submit flows with direct result display
+Google OAuth
+User Roles
+Protected Admin Routes
+Question CRUD
+Monaco Editor Integration (user + admin)
+Quill Integration
+LeetCode-style Question View
+Template-based Code Injection using LECO_USER_CODE
+Submission model + API (run & submit)
+Submission history
+BullMQ + Redis queue system
+Docker-based code execution
+Verdict generation (AC / WA / CE / RE / TLE / MLE / SYSTEM_ERROR)
+Comparator types (EXACT_MATCH, FLOAT_EPSILON, CUSTOM_VALIDATOR)
+Testcase management with auto output generation
+Official solution storage
+Draggable split-pane UI
+Independent Run / Submit flows
+AI testcase family discovery
+Persistent testcase families (yet to be completed - ui)
+AI testcase generator creation
+Family-linked testcase generation
+GeneratorCode and ValidatorCode support
 
 
 

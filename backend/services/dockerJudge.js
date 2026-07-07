@@ -170,12 +170,6 @@ export const compareOutput = (actual, expected, comparatorType) => {
 			return Math.abs(a - e) <= EPSILON;
 		}
 
-		case 'UNORDERED_VECTOR': {
-			const toSortedTokens = (s) =>
-				normalize(s).split(/\s+/).filter(Boolean).sort().join(' ');
-			return toSortedTokens(actual) === toSortedTokens(expected);
-		}
-
 		case 'CUSTOM':
 			// Custom comparator not yet implemented — fall back to exact match
 			return normalize(actual) === normalize(expected);

@@ -1,5 +1,16 @@
 import mongoose from 'mongoose';
 
+const familySchema = new mongoose.Schema(
+	{
+		name:             { type: String, required: true },
+		description:      { type: String, default: '' },
+		bugTargeted:      { type: String, default: '' },
+		recommendedCount: { type: Number, default: 5 },
+		source:           { type: String, enum: ['ai', 'manual'], default: 'ai' },
+	},
+	{ timestamps: false }
+);
+
 const exampleSchema = new mongoose.Schema(
 	{
 		input: {
@@ -91,21 +102,37 @@ const questionSchema = new mongoose.Schema(
 		validatorCode: {
 			type: String,
 			default: '',
+			validate: {
+				validator: function (value) {
+					return this.comparatorType !== 'CUSTOM' || Boolean(value && value.trim());
+				},
+				message: 'validatorCode is required when comparatorType is CUSTOM.',
+			},
+		},
+		validatorHash: {
+			type: String,
+			default: '',
 		},
 		generatorCode: {
 			type: String,
 			default: '',
 		},
+		families: {
+			type: [familySchema],
+			default: [],
+		},
 		comparatorType: {
 			type: String,
-			enum: ['EXACT_MATCH', 'FLOAT_EPSILON', 'UNORDERED_VECTOR', 'CUSTOM'],
+			enum: ['EXACT_MATCH', 'FLOAT_EPSILON', 'CUSTOM'],
 			default: 'EXACT_MATCH',
 		},
 		timeLimit: {
 			type: Number,
+			default: 1000
 		},
 		memoryLimit: {
 			type: Number,
+			default: 256
 		},
 	},
 	{

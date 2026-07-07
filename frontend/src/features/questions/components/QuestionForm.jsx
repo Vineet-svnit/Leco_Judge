@@ -27,6 +27,51 @@ const DEFAULT_EXAMPLE = {
 	image: '',
 };
 
+const DEFAULT_VALIDATOR_CODE = `#include <bits/stdc++.h>
+using namespace std;
+
+int main(int argc, char* argv[]) {
+	ifstream input(argv[1]);
+	ifstream expected(argv[2]);
+	ifstream actual(argv[3]);
+
+	// Return 0 for AC
+	// Return 1 for WA
+
+	return 0;
+}`;
+
+const createFamilyId = () => {
+	const bytes = new Uint8Array(12);
+	if (globalThis.crypto?.getRandomValues) {
+		globalThis.crypto.getRandomValues(bytes);
+	} else {
+		for (let index = 0; index < bytes.length; index += 1) {
+			bytes[index] = Math.floor(Math.random() * 256);
+		}
+	}
+
+	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
+const normalizeFamily = (family = {}) => ({
+	_id: String(family._id || family.id || createFamilyId()),
+	name: family.name || '',
+	description: family.description || '',
+	bugTargeted: family.bugTargeted || '',
+	recommendedCount: Number.isFinite(Number(family.recommendedCount)) ? Number(family.recommendedCount) : 5,
+	source: family.source || 'ai',
+});
+
+const normalizeTestcase = (testcase = {}) => ({
+	input: testcase.input || '',
+	output: testcase.output || '',
+	status: testcase.status || 'PENDING',
+	errorType: testcase.errorType || '',
+	errorMessage: testcase.errorMessage || '',
+	familyId: testcase.familyId || null,
+});
+
 const DEFAULT_FORM = {
 	title: '',
 	image: '',
@@ -36,11 +81,12 @@ const DEFAULT_FORM = {
 	constraints: '',
 	languages: [{ lang: 'cpp', codeSnippet: '', classSnippet: '' }],
 	officialSolution: '',
-	validatorCode: '',
+	validatorCode: DEFAULT_VALIDATOR_CODE,
 	generatorCode: '',
 	comparatorType: 'EXACT_MATCH',
 	timeLimit: '',
 	memoryLimit: '',
+	families: [],
 	examples: [DEFAULT_EXAMPLE],
 	testcases: [],
 };
@@ -60,9 +106,10 @@ const normalizeForm = (value = DEFAULT_FORM) => {
 		memoryLimit: value?.memoryLimit ?? '',
 		image: value?.image ?? '',
 		officialSolution: value?.officialSolution ?? '',
-		validatorCode: value?.validatorCode ?? '',
+		validatorCode: value?.validatorCode || DEFAULT_VALIDATOR_CODE,
 		generatorCode: value?.generatorCode ?? '',
 		comparatorType: value?.comparatorType ?? 'EXACT_MATCH',
+		families: (value?.families || []).map(normalizeFamily),
 		languages: langs.map((l) => ({
 			lang: l.lang,
 			codeSnippet: l.codeSnippet || '',
@@ -71,9 +118,7 @@ const normalizeForm = (value = DEFAULT_FORM) => {
 		examples: (value?.examples?.length ? value.examples : DEFAULT_FORM.examples).map(
 			normalizeExample
 		),
-		testcases: (value?.testcases || []).map((tc) => ({
-			input: tc.input || '',
-		})),
+		testcases: (value?.testcases || []).map(normalizeTestcase),
 	};
 };
 
@@ -110,15 +155,28 @@ const uploadToCloudinary = async (file) => {
 // Props:
 //   form          — current form state (read)
 //   setForm       — update form state
+// ── AutoTestcaseSection ───────────────────────────────────────────────────────
+// 4-step AI-assisted testcase generation:
+//   Step 1 (AI)     — Discover testcase families from problem metadata
+//   Step 2 (review) — Admin reviews / adjusts family counts
+//   Step 3 (AI)     — Generate C++ generator implementing those exact families
+//   Step 4 (Docker) — Compile generator, load families, run to get inputs
+// ── AutoTestcaseSection ───────────────────────────────────────────────────────
+// 3+1 step flow:
+//   Step 1 (AI)     — Discover testcase families
+//   Step 2 (review) — Admin adjusts counts (no separate action)
+//   Step 3 (AI)     — Generate C++ generator implementing those families
+//   Step 4 (Docker) — Run generator with the same families from Step 1
 function AutoTestcaseSection({ form, setForm }) {
-	const [genStatus, setGenStatus]         = useState('idle'); // idle | loading | done | error
-	const [genError, setGenError]           = useState('');
-	const [families, setFamilies]           = useState([]);     // [{ name, description, count }]
-	const [familyStatus, setFamilyStatus]   = useState('idle');
-	const [tcStatus, setTcStatus]           = useState('idle');
-	const [tcError, setTcError]             = useState('');
+	const [discoverStatus, setDiscoverStatus] = useState('idle');
+	const [discoverError, setDiscoverError]   = useState('');
 
-	// Strip HTML tags to get plain text for the AI prompt
+	const [genStatus, setGenStatus] = useState('idle');
+	const [genError, setGenError]   = useState('');
+
+	const [tcStatus, setTcStatus] = useState('idle');
+	const [tcError, setTcError]   = useState('');
+
 	const stripHtml = (html = '') => {
 		const d = document.createElement('div');
 		d.innerHTML = html;
@@ -128,48 +186,128 @@ function AutoTestcaseSection({ form, setForm }) {
 	const plainStatement   = stripHtml(form.statement);
 	const plainConstraints = stripHtml(form.constraints);
 	const plainTopic       = stripHtml(form.topic);
-
 	const preconditionsMet = plainStatement && plainConstraints && plainTopic;
+	const families = form.families || [];
 
+	const existingFamiliesForPrompt = families.map(({ _id, name, description, bugTargeted, recommendedCount, source }) => ({
+		_id,
+		name,
+		description,
+		bugTargeted,
+		recommendedCount,
+		source,
+	}));
+
+	const updateFamily = (familyIndex, field, value) => {
+		setForm((current) => {
+			const nextFamilies = [...(current.families || [])];
+			nextFamilies[familyIndex] = {
+				...nextFamilies[familyIndex],
+				[field]: field === 'recommendedCount' ? Number(value) : value,
+			};
+			return { ...current, families: nextFamilies };
+		});
+	};
+
+	const removeFamily = (familyIndex) => {
+		setForm((current) => {
+			const removedFamily = current.families?.[familyIndex];
+			const removedFamilyId = removedFamily?._id ? String(removedFamily._id) : '';
+			const nextFamilies = (current.families || []).filter((_, index) => index !== familyIndex);
+			const nextTestcases = (current.testcases || []).filter((testcase) => {
+				if (!testcase.familyId || !removedFamilyId) {
+					return true;
+				}
+				return String(testcase.familyId) !== removedFamilyId;
+			});
+
+			return {
+				...current,
+				families: nextFamilies,
+				testcases: nextTestcases,
+			};
+		});
+	};
+
+	// Step 1: AI discovers families
+	const handleDiscoverFamilies = async () => {
+		setDiscoverStatus('loading');
+		setDiscoverError('');
+		setGenStatus('idle');
+		try {
+			const res = await questionApi.aiDiscoverFamilies({
+				statement:        plainStatement,
+				constraints:      plainConstraints,
+				topic:            plainTopic,
+				officialSolution: form.officialSolution || '',
+				existingFamilies:  existingFamiliesForPrompt,
+			});
+			const discoveredFamilies = (res.families || []).map((family) =>
+				normalizeFamily({
+					...family,
+					source: 'ai',
+				})
+			);
+
+			if (discoveredFamilies.length > 0) {
+				setForm((current) => ({
+					...current,
+					families: [...(current.families || []), ...discoveredFamilies],
+				}));
+			}
+			setDiscoverStatus('done');
+		} catch (err) {
+			setDiscoverError(err.message || 'Family discovery failed.');
+			setDiscoverStatus('error');
+		}
+	};
+
+	// Step 3: AI generates generator using confirmed families
 	const handleGenerateGenerator = async () => {
 		setGenStatus('loading');
 		setGenError('');
-		setFamilies([]);
 		try {
 			const res = await questionApi.aiGenerateGenerator({
-				statement:       plainStatement,
-				constraints:     plainConstraints,
-				topic:           plainTopic,
+				statement:        plainStatement,
+				constraints:      plainConstraints,
+				topic:            plainTopic,
 				officialSolution: form.officialSolution || '',
+				families:         families.map(({ _id, name, description, bugTargeted, recommendedCount, source }) => ({
+					_id,
+					name,
+					description,
+					bugTargeted,
+					recommendedCount,
+					source,
+				})),
 			});
 			setForm((f) => ({ ...f, generatorCode: res.generatorCode }));
 			setGenStatus('done');
 		} catch (err) {
-			setGenError(err.message || 'Generation failed.');
+			setGenError(err.message || 'Generator creation failed.');
 			setGenStatus('error');
 		}
 	};
 
-	const handleDiscoverFamilies = async () => {
-		setFamilyStatus('loading');
-		try {
-			const res = await questionApi.generatorListFamilies(form.generatorCode);
-			setFamilies(res.families.map((f) => ({ ...f, count: 5 })));
-			setFamilyStatus('done');
-		} catch (err) {
-			setFamilyStatus('error');
-		}
-	};
-
+	// Step 4: Docker runs generator using family names from Step 1
 	const handleGenerateTestcases = async () => {
 		setTcStatus('loading');
 		setTcError('');
 		try {
 			const res = await questionApi.generatorRun(
 				form.generatorCode,
-				families.filter((f) => f.count > 0).map(({ name, count }) => ({ name, count }))
+				families
+					.filter((family) => Number(family.recommendedCount) > 0)
+					.map(({ _id, name, recommendedCount }) => ({
+						familyId: _id,
+						name,
+						count: Number(recommendedCount) || 0,
+					}))
 			);
-			const newTcs = res.inputs.map((input) => ({ input }));
+			const newTcs = (res.testcases || res.inputs || []).map((testcase) => ({
+				input: testcase.input || testcase,
+				familyId: testcase.familyId || null,
+			}));
 			setForm((f) => ({ ...f, testcases: [...newTcs, ...f.testcases] }));
 			setTcStatus('done');
 		} catch (err) {
@@ -182,7 +320,7 @@ function AutoTestcaseSection({ form, setForm }) {
 		<section className="ai-tc-section">
 			<div className="section-heading" style={{ margin: '8px 0 14px' }}>
 				<h3>Automated Testcase Generation</h3>
-				<span className="status-chip status-chip--admin" style={{ fontSize: '0.72rem' }}>AI</span>
+				<span className="status-chip status-chip--admin" style={{ fontSize: '0.72rem' }}>AI × 2 → Docker</span>
 			</div>
 
 			{!preconditionsMet && (
@@ -191,27 +329,104 @@ function AutoTestcaseSection({ form, setForm }) {
 				</p>
 			)}
 
-			{/* Step 1: generate the generator */}
+			{/* Step 1 */}
 			<div className="ai-tc-step">
 				<div className="ai-tc-step__header">
 					<span className="ai-tc-step__num">1</span>
-					<span>Generate testcase generator code</span>
+					<span>Discover testcase families (AI)</span>
 					<button
 						type="button"
 						className="ai-tc-btn"
-						disabled={!preconditionsMet || genStatus === 'loading'}
-						onClick={handleGenerateGenerator}
+						disabled={!preconditionsMet || discoverStatus === 'loading'}
+						onClick={handleDiscoverFamilies}
 					>
-						{genStatus === 'loading' ? 'Generating…' : 'Generate Testcase Generator'}
+						{discoverStatus === 'loading' ? 'Analysing…' : 'Discover Families'}
 					</button>
 				</div>
-				{genError && <p className="ai-tc-error">{genError}</p>}
 			</div>
+			{discoverError && <p className="ai-tc-error">{discoverError}</p>}
 
-			{/* Generator code editor */}
-			<div style={{ marginBottom: '16px' }}>
-				<label style={{ display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-					Generator Code (C++)
+				{/* Step 2 — persistent family list */}
+				{families.length > 0 ? (
+					<>
+						<p style={{ margin: '4px 0 8px', fontSize: '0.8rem', color: 'rgba(230,236,255,0.5)' }}>
+							{families.length} family definition(s) in the question. Edit or remove them before saving.
+						</p>
+						<div className="ai-tc-families">
+							{families.map((family, familyIndex) => (
+								<article className="ai-tc-family-card" key={family._id || familyIndex}>
+									<div className="ai-tc-family-card__header">
+										<div>
+											<strong>{family.name || `Family ${familyIndex + 1}`}</strong>
+											<span className="ai-tc-family-source">{family.source || 'ai'}</span>
+										</div>
+										<button type="button" className="ai-tc-family-remove" onClick={() => removeFamily(familyIndex)}>
+											Remove
+										</button>
+									</div>
+									<div className="ai-tc-family-grid">
+										<label>
+											Family name
+											<input
+												value={family.name}
+												onChange={(event) => updateFamily(familyIndex, 'name', event.target.value)}
+											/>
+										</label>
+										<label>
+											Recommended count
+											<input
+												type="number"
+												min="0"
+												value={family.recommendedCount}
+												onChange={(event) => updateFamily(familyIndex, 'recommendedCount', event.target.value)}
+											/>
+										</label>
+										<label className="ai-tc-family-grid__wide">
+											Description
+											<textarea
+												value={family.description}
+												onChange={(event) => updateFamily(familyIndex, 'description', event.target.value)}
+											/>
+										</label>
+										<label className="ai-tc-family-grid__wide">
+											Bug targeted
+											<textarea
+												value={family.bugTargeted}
+												onChange={(event) => updateFamily(familyIndex, 'bugTargeted', event.target.value)}
+											/>
+										</label>
+									</div>
+								</article>
+							))}
+						</div>
+
+						{/* Step 3 */}
+						<div className="ai-tc-step">
+							<div className="ai-tc-step__header">
+								<span className="ai-tc-step__num">3</span>
+								<span>Generate C++ generator (AI)</span>
+								<button
+									type="button"
+									className="ai-tc-btn"
+									disabled={genStatus === 'loading'}
+									onClick={handleGenerateGenerator}
+								>
+									{genStatus === 'loading' ? 'Generating…' : 'Generate Generator'}
+								</button>
+							</div>
+						</div>
+						{genError && <p className="ai-tc-error">{genError}</p>}
+					</>
+				) : (
+					<p style={{ margin: '4px 0 8px', fontSize: '0.8rem', color: 'rgba(230,236,255,0.5)' }}>
+						No families added yet. Discover families to populate this section.
+					</p>
+				)}
+
+			{/* Generator code editor — always visible */}
+			<div style={{ margin: '8px 0 4px' }}>
+				<label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '0.88rem' }}>
+					Generator Code (C++) — review or edit before running
 				</label>
 				<Editor
 					height="240px"
@@ -223,71 +438,28 @@ function AutoTestcaseSection({ form, setForm }) {
 				/>
 			</div>
 
-			{/* Step 2: discover families */}
-			<div className="ai-tc-step">
-				<div className="ai-tc-step__header">
-					<span className="ai-tc-step__num">2</span>
-					<span>Discover families (compiles generator in Docker)</span>
-					<button
-						type="button"
-						className="ai-tc-btn"
-						disabled={!form.generatorCode.trim() || familyStatus === 'loading'}
-						onClick={handleDiscoverFamilies}
-					>
-						{familyStatus === 'loading' ? 'Compiling…' : 'Load Families'}
-					</button>
-				</div>
-				{familyStatus === 'error' && (
-					<p className="ai-tc-error">Failed to compile or run generator. Check the code above.</p>
-				)}
-			</div>
-
-			{/* Family count inputs */}
-			{families.length > 0 && (
-				<div className="ai-tc-families">
-					{families.map((fam, i) => (
-						<div key={i} className="ai-tc-family-row">
-							<div className="ai-tc-family-info">
-								<span className="ai-tc-family-name">{fam.name}</span>
-								<span className="ai-tc-family-desc">{fam.description}</span>
-							</div>
-							<input
-								type="number"
-								min="0"
-								max="100"
-								value={fam.count}
-								className="ai-tc-family-count"
-								onChange={(e) => {
-									const updated = [...families];
-									updated[i] = { ...updated[i], count: Number(e.target.value) };
-									setFamilies(updated);
-								}}
-							/>
+			{/* Step 4 — only available once generator exists and families are loaded */}
+			{form.generatorCode.trim() && families.length > 0 && (
+				<>
+					<div className="ai-tc-step">
+						<div className="ai-tc-step__header">
+							<span className="ai-tc-step__num">4</span>
+							<span>Generate testcases (Docker)</span>
+							<button
+								type="button"
+								className="ai-tc-btn ai-tc-btn--primary"
+								disabled={tcStatus === 'loading'}
+								onClick={handleGenerateTestcases}
+							>
+								{tcStatus === 'loading' ? 'Generating…' : 'Generate Testcases'}
+							</button>
 						</div>
-					))}
-				</div>
-			)}
-
-			{/* Step 3: generate testcases */}
-			{families.length > 0 && (
-				<div className="ai-tc-step">
-					<div className="ai-tc-step__header">
-						<span className="ai-tc-step__num">3</span>
-						<span>Generate testcases</span>
-						<button
-							type="button"
-							className="ai-tc-btn ai-tc-btn--primary"
-							disabled={tcStatus === 'loading'}
-							onClick={handleGenerateTestcases}
-						>
-							{tcStatus === 'loading' ? 'Generating…' : 'Generate Testcases'}
-						</button>
 					</div>
 					{tcStatus === 'done' && (
 						<p className="ai-tc-success">Testcases added to the list below. Review and save.</p>
 					)}
 					{tcError && <p className="ai-tc-error">{tcError}</p>}
-				</div>
+				</>
 			)}
 		</section>
 	);
@@ -419,8 +591,25 @@ export const QuestionForm = ({ initialValue = DEFAULT_FORM, onSubmit, submitLabe
 
 	const handleSubmit = (event) => {
 		event.preventDefault();
+		const familyIds = new Set((form.families || []).map((family) => String(family._id)));
+		const families = (form.families || []).map(({ _id, name, description, bugTargeted, recommendedCount, source }) => ({
+			_id,
+			name,
+			description,
+			bugTargeted,
+			recommendedCount: Number(recommendedCount) || 0,
+			source,
+		}));
+		const testcases = (form.testcases || [])
+			.filter((testcase) => !testcase.familyId || familyIds.has(String(testcase.familyId)))
+			.map((testcase) => ({
+				input: testcase.input || '',
+				familyId: testcase.familyId || null,
+			}));
 		onSubmit({
 			...form,
+			families,
+			testcases,
 			timeLimit: form.timeLimit ? Number(form.timeLimit) : undefined,
 			memoryLimit: form.memoryLimit ? Number(form.memoryLimit) : undefined,
 			examples: (form.examples || []).filter(
@@ -465,7 +654,6 @@ export const QuestionForm = ({ initialValue = DEFAULT_FORM, onSubmit, submitLabe
 				<select name="comparatorType" value={form.comparatorType} onChange={handleChange}>
 					<option value="EXACT_MATCH">Exact match</option>
 					<option value="FLOAT_EPSILON">Float epsilon (1e-6)</option>
-					<option value="UNORDERED_VECTOR">Unordered vector</option>
 					<option value="CUSTOM">Custom</option>
 				</select>
 			</label>
@@ -606,8 +794,11 @@ export const QuestionForm = ({ initialValue = DEFAULT_FORM, onSubmit, submitLabe
 			{form.comparatorType === 'CUSTOM' && (
 				<section className="question-language-snippets">
 					<div className="section-heading" style={{ margin: '20px 0 10px' }}>
-						<h3>Validator Code (C++) — for CUSTOM comparator</h3>
+						<h3>Validator Code (C++) [required when Comparator type is Custom]</h3>
 					</div>
+					<p className="question-upload-status" style={{ marginBottom: '10px' }}>
+						The validator must be written in C++ and is independent of the user's solution language.
+					</p>
 					<Editor
 						height="220px"
 						language="cpp"
@@ -645,6 +836,7 @@ export const QuestionForm = ({ initialValue = DEFAULT_FORM, onSubmit, submitLabe
 							<tr>
 								<th>#</th>
 								<th>Input</th>
+								<th>Result</th>
 								<th></th>
 							</tr>
 						</thead>
@@ -653,6 +845,23 @@ export const QuestionForm = ({ initialValue = DEFAULT_FORM, onSubmit, submitLabe
 								<tr key={index}>
 									<td>{index + 1}</td>
 									<td><pre>{tc.input}</pre></td>
+										<td>
+											<div className="testcase-result">
+												<span className={`status-chip testcase-status testcase-status--${(tc.status || 'PENDING').toLowerCase()}`}>
+													{tc.status || 'PENDING'}
+												</span>
+												{tc.status === 'PASSED' ? (
+													<pre className="testcase-result__output">{tc.output || 'Output saved.'}</pre>
+												) : tc.status === 'FAILED' ? (
+													<div className="testcase-result__error">
+														{tc.errorType ? <strong>{tc.errorType}</strong> : null}
+														{tc.errorMessage ? <span>{tc.errorMessage}</span> : <span>Output not saved.</span>}
+													</div>
+												) : (
+													<span className="testcase-result__pending">Waiting for generation.</span>
+												)}
+											</div>
+										</td>
 									<td>
 										<button type="button" onClick={() => openTcModal(index)}>Edit</button>
 										{' '}

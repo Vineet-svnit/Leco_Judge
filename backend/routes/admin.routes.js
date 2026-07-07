@@ -8,8 +8,8 @@ import {
 } from '../controllers/question.controller.js';
 import { batchSaveTestcases, listTestcases } from '../controllers/testcase.controller.js';
 import {
+	handleDiscoverFamilies,
 	handleGenerateGenerator,
-	handleListFamilies,
 	handleRunGenerator,
 } from '../controllers/ai.controller.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.middleware.js';
@@ -26,11 +26,11 @@ router.patch('/questions/:id', updateQuestion);
 router.get('/questions/:id/testcases', listTestcases);
 router.post('/questions/:id/testcases/batch', batchSaveTestcases);
 
-// AI-assisted testcase generation (AI used only for generator creation)
-router.post('/ai/generate-generator', handleGenerateGenerator);
+// AI calls (2 total)
+router.post('/ai/discover-families', handleDiscoverFamilies);   // AI Call #1
+router.post('/ai/generate-generator', handleGenerateGenerator); // AI Call #2
 
 // Generator execution in Docker (no AI)
-router.post('/generator/list-families', handleListFamilies);
 router.post('/generator/run', handleRunGenerator);
 
 export default router;

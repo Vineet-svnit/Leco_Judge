@@ -38,7 +38,13 @@ export const questionApi = {
 			body: JSON.stringify({ testcases }),
 		}),
 
-	// AI — generates the generator code (only AI call in the flow)
+	// AI — two calls total
+	aiDiscoverFamilies: (payload) =>
+		requestJson('/admin/ai/discover-families', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		}),
 	aiGenerateGenerator: (payload) =>
 		requestJson('/admin/ai/generate-generator', {
 			method: 'POST',
@@ -47,12 +53,6 @@ export const questionApi = {
 		}),
 
 	// Generator execution in Docker (no AI)
-	generatorListFamilies: (generatorCode) =>
-		requestJson('/admin/generator/list-families', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ generatorCode }),
-		}),
 	generatorRun: (generatorCode, families) =>
 		requestJson('/admin/generator/run', {
 			method: 'POST',

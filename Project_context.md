@@ -81,7 +81,7 @@ Build a LeetCode-like Online Judge to learn:
 * examples (embedded, shown to users)
 * languages (codeSnippet + classSnippet per lang)
 * officialSolution (admin-only, used for testcase output generation)
-* comparatorType (EXACT_MATCH | FLOAT_EPSILON | UNORDERED_VECTOR | CUSTOM)
+* comparatorType (EXACT_MATCH | FLOAT_EPSILON | CUSTOM)
 * timeLimit
 * memoryLimit
 * questionNo (auto-incremented)

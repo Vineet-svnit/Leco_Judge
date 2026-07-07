@@ -44,24 +44,48 @@ const processTcGen = async (job) => {
 		inputs,
 		timeLimitMs: (question.timeLimit || 2000) * 3, // 3x limit for official solution
 		memoryMb: question.memoryLimit || 256,
+		collectAllResults: true,
 	});
+
+	const testcaseResults = result.testcaseResults?.length
+		? result.testcaseResults
+		: testcases.map((tc, index) => ({
+			index,
+			input: tc.input,
+			output: result.outputs[index] ?? '',
+			status: result.verdict === 'CE' ? 'FAILED' : 'PASSED',
+			errorType: result.verdict === 'CE' ? 'CE' : '',
+			errorMessage: result.compilerOutput || '',
+		}));
 
 	if (result.verdict === 'CE') {
 		console.error(`[tcGenWorker] Official solution CE for question ${questionId}:\n${result.compilerOutput}`);
-		throw new Error(`Official solution CE: ${result.compilerOutput}`);
 	}
 
-	// Save generated outputs back to each testcase
-	const updateOps = testcases.map((tc, i) => ({
+	const updateOps = testcases.map((tc, index) => {
+		const testcaseResult = testcaseResults[index] || {};
+		const passed = testcaseResult.status === 'PASSED' || (!testcaseResult.status && !testcaseResult.errorType);
+
+		return {
 		updateOne: {
 			filter: { _id: tc._id },
-			update: { $set: { output: result.outputs[i] ?? '' } },
+			update: {
+				$set: {
+					output: passed ? testcaseResult.output ?? result.outputs[index] ?? '' : '',
+					status: passed ? 'PASSED' : 'FAILED',
+					errorType: passed ? '' : testcaseResult.errorType || 'RE',
+					errorMessage: passed ? '' : testcaseResult.errorMessage || result.compilerOutput || '',
+				},
+			},
 		},
-	}));
+		};
+	});
 
 	await TestCase.bulkWrite(updateOps);
 
-	console.log(`[tcGenWorker] Saved outputs for ${testcases.length} testcase(s) on question ${questionId}`);
+	const passedCount = testcaseResults.filter((testcaseResult) => testcaseResult.status === 'PASSED').length;
+	const failedCount = testcaseResults.length - passedCount;
+	console.log(`[tcGenWorker] Saved outputs for ${passedCount} passing testcase(s) and marked ${failedCount} failed testcase(s) on question ${questionId}`);
 };
 
 export const startTcGenWorker = () => {

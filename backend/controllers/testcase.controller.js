@@ -24,7 +24,11 @@ export const batchSaveTestcases = async (req, res) => {
 		const created =
 			testcases.length > 0
 				? await TestCase.insertMany(
-						testcases.map(({ input }) => ({ questionId, input }))
+						testcases.map(({ input, familyId }) => ({
+							questionId,
+							input,
+							familyId: familyId || null,
+						}))
 				  )
 				: [];
 

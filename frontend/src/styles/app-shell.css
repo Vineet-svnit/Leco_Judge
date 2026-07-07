@@ -192,6 +192,21 @@
 	color: #fca5a5;
 }
 
+.status-chip--success {
+	background: rgba(74, 222, 128, 0.14);
+	color: #86efac;
+}
+
+.status-chip--danger {
+	background: rgba(248, 113, 113, 0.16);
+	color: #fca5a5;
+}
+
+.status-chip--pending {
+	background: rgba(251, 191, 36, 0.16);
+	color: #fcd34d;
+}
+
 .page-panel {
 	width: min(1180px, 100%);
 	margin: 0 auto;
@@ -1263,6 +1278,49 @@
 	overflow-y: auto;
 }
 
+.testcase-result {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.testcase-status {
+	width: fit-content;
+	font-size: 0.68rem;
+	padding: 5px 10px;
+}
+
+.testcase-status--passed {
+	background: rgba(74, 222, 128, 0.14);
+	color: #86efac;
+}
+
+.testcase-status--failed {
+	background: rgba(248, 113, 113, 0.16);
+	color: #fca5a5;
+}
+
+.testcase-status--pending {
+	background: rgba(251, 191, 36, 0.16);
+	color: #fcd34d;
+}
+
+.testcase-result__output,
+.testcase-result__error,
+.testcase-result__pending {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.45;
+	color: rgba(230, 236, 255, 0.8);
+}
+
+.testcase-result__error {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	color: #fca5a5;
+}
+
 /* ── Testcase modal ─────────────────────────────────────────── */
 .tc-modal-overlay {
 	position: fixed;
@@ -1718,24 +1776,86 @@
 
 .ai-tc-families {
 	display: grid;
-	gap: 8px;
+	gap: 12px;
 	padding: 14px;
-	border-radius: 14px;
+	border-radius: 16px;
 	background: rgba(255, 255, 255, 0.03);
 	border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.ai-tc-family-row {
+.ai-tc-family-card {
+	display: grid;
+	gap: 14px;
+	padding: 16px;
+	border-radius: 16px;
+	background: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ai-tc-family-card__header {
 	display: flex;
-	align-items: center;
+	align-items: flex-start;
 	justify-content: space-between;
-	gap: 16px;
+	gap: 12px;
+}
+
+.ai-tc-family-card__header strong {
+	display: block;
+	font-size: 0.96rem;
+	color: #f8fbff;
+}
+
+.ai-tc-family-source {
+	display: inline-flex;
+	margin-top: 4px;
+	padding: 4px 8px;
+	border-radius: 999px;
+	background: rgba(125, 211, 252, 0.12);
+	color: #7dd3fc;
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.ai-tc-family-remove {
+	border: 0;
+	border-radius: 10px;
+	padding: 8px 12px;
+	background: rgba(248, 113, 113, 0.14);
+	color: #fca5a5;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.ai-tc-family-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.ai-tc-family-grid label {
+	display: grid;
+	gap: 8px;
+	font-size: 0.86rem;
+	font-weight: 700;
+	color: #f8fbff;
+}
+
+.ai-tc-family-grid__wide {
+	grid-column: 1 / -1;
+}
+
+.ai-tc-family-grid textarea {
+	min-height: 88px;
+	resize: vertical;
 }
 
 .ai-tc-family-info {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: 3px;
+	flex: 1;
 	min-width: 0;
 }
 
@@ -1743,17 +1863,30 @@
 	font-size: 0.88rem;
 	font-weight: 600;
 	color: #f8fbff;
+	display: block;
+	white-space: normal;
+	word-break: break-word;
 }
 
 .ai-tc-family-desc {
 	font-size: 0.78rem;
 	color: rgba(230, 236, 255, 0.55);
+	display: block;
+	white-space: normal;
+	word-break: break-word;
+}
+
+.ai-tc-family-bug {
+	font-size: 0.78rem;
+	color: rgba(230, 236, 255, 0.55);
+	display: block;
+	white-space: normal;
+	word-break: break-word;
 }
 
 .ai-tc-family-count {
-	width: 72px;
-	flex-shrink: 0;
-	padding: 8px 10px;
+	width: 72px !important;
+	/* padding: 8px 10px; */
 	border-radius: 10px;
 	border: 1px solid rgba(255, 255, 255, 0.1);
 	background: rgba(255, 255, 255, 0.05);
@@ -1764,8 +1897,22 @@
 }
 
 .ai-tc-family-count:focus {
-	border-color: rgba(125, 211, 252, 0.4);
+	border-color: rgba(6, 16, 20, 0.4);
 	box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.1);
+}
+
+@media (max-width: 640px) {
+	.ai-tc-family-card__header {
+		flex-direction: column;
+	}
+
+	.ai-tc-family-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.ai-tc-family-grid__wide {
+		grid-column: auto;
+	}
 }
 
 /* ── Collapsible topic section ───────────────────────────────── */
@@ -1816,4 +1963,10 @@
 	font-size: 0.88rem;
 	color: rgba(230, 236, 255, 0.8);
 	line-height: 1.7;
+}
+
+.ai-tc-family-bug {
+	font-size: 0.72rem;
+	color: rgba(251, 191, 36, 0.7);
+	font-style: italic;
 }

@@ -11,9 +11,30 @@ const testCaseSchema = new mongoose.Schema(
 			type: String,
 			required: true,
 		},
+		isPublic: {
+			type: Boolean,
+			default: true
+		},
 		output: {
 			type: String,
 			default: '',
+		},
+		status: {
+			type: String,
+			enum: ['PENDING', 'PASSED', 'FAILED'],
+			default: 'PENDING',
+		},
+		errorType: {
+			type: String,
+			default: '',
+		},
+		errorMessage: {
+			type: String,
+			default: '',
+		},
+		familyId: {
+			type: mongoose.Schema.Types.ObjectId,
+			default: null,
 		},
 	},
 	{
