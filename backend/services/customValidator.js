@@ -31,30 +31,9 @@ export const ensureValidatorBinary = async (validatorCode, existingHash = '') =>
         try {
             await fs.access(binaryPath);
             return { validatorHash, binaryPath, compiled: false };
-        } catch (error) {
-            await fs.rm(binaryPath, { force: true }).catch(() => { });
-
-            const compilerOutput =
-                (error.stderr || error.stdout || error.message || '')
-                    .toString()
-                    .trim();
-
-            throw Object.assign(
-                new Error('Validator compile error'),
-                {
-                    compilerOutput,
-                    validatorHash,
-                    isCompileError: true,
-                }
-            );
+        } catch {
+            // binary missing -> compile again below
         }
-    }
-
-    try {
-        await fs.access(binaryPath);
-        return { validatorHash, binaryPath, compiled: false };
-    } catch {
-        // compile below
     }
 
     await ensureDirectory(VALIDATOR_CACHE_DIR);

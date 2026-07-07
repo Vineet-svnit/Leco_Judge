@@ -65,8 +65,8 @@ const processRun = async (job) => {
 				const validatorResult = await runValidatorBinary({
 					binaryPath,
 					input: ex.input,
-					expectedOutput: actual,
-					actualOutput: ex.output ?? '',
+					expectedOutput: ex.output ?? '',
+					actualOutput: actual,
 				});
 				perExample.push({
 					input: ex.input,

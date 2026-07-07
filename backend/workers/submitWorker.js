@@ -104,8 +104,8 @@ const processSubmit = async (job) => {
 				const validatorResult = await runValidatorBinary({
 					binaryPath,
 					input: tc.input,
-					expectedOutput: userOutput,
-					actualOutput: tc.output ?? '',
+					expectedOutput: tc.output ?? '',
+					actualOutput: userOutput,
 				});
 
 				if (!validatorResult.passed) {

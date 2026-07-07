@@ -23,6 +23,30 @@ const DEFAULT_TIME_LIMIT_MS = 2000;
 const DEFAULT_MEMORY_MB = 256;
 const COMPILE_TIMEOUT_MS = 15000;
 
+const classifyDockerError = (err) => {
+    if (err.killed) {
+        return {
+            status: 'FAILED',
+            errorType: 'TLE',
+            errorMessage: 'Execution timed out.',
+        };
+    }
+
+    if (err.code === 137) {
+        return {
+            status: 'FAILED',
+            errorType: 'MLE',
+            errorMessage: 'Process exceeded memory limit.',
+        };
+    }
+
+    return {
+        status: 'FAILED',
+        errorType: 'RE',
+        errorMessage: (err.stderr || err.stdout || err.message || '').toString().trim(),
+    };
+};
+
 /**
  * Run code inside Docker against an array of inputs.
  *
@@ -34,111 +58,151 @@ const COMPILE_TIMEOUT_MS = 15000;
  * @returns {Promise<JudgeResult>}
  */
 export const runInDocker = async ({
-	sourceCode,
-	inputs,
-	timeLimitMs = DEFAULT_TIME_LIMIT_MS,
-	memoryMb = DEFAULT_MEMORY_MB,
+    sourceCode,
+    inputs,
+    timeLimitMs = DEFAULT_TIME_LIMIT_MS,
+    memoryMb = DEFAULT_MEMORY_MB,
+    collectAllResults = false,
 }) => {
-	// Create a temp directory on the host — mounted into the container
-	const workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'leco-'));
-	const srcFile = path.join(workDir, 'solution.cpp');
-	const binFile = path.join(workDir, 'solution');
+    // Create a temp directory on the host — mounted into the container
+    const workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'leco-'));
+    const srcFile = path.join(workDir, 'solution.cpp');
+    const binFile = path.join(workDir, 'solution');
 
-	try {
-		await fs.writeFile(srcFile, sourceCode, 'utf8');
+    try {
+        await fs.writeFile(srcFile, sourceCode, 'utf8');
 
-		// ── Step 1: Compile ────────────────────────────────────────────
-		let compilerOutput = '';
-		try {
-			await execFileAsync('docker', [
-				'run', '--rm',
-				'--network', 'none',
-				`--memory=${memoryMb}m`,
-				'--cpus=1',
-				'-v', `${workDir}:/code`,
-				'-w', '/code',
-				DOCKER_IMAGE,
-				'g++', '-O2', '-o', 'solution', 'solution.cpp',
-			], { timeout: COMPILE_TIMEOUT_MS });
-		} catch (err) {
-			compilerOutput = (err.stderr || err.stdout || err.message || '').toString().trim();
-			return { verdict: 'CE', compilerOutput, outputs: [], executionTime: 0 };
-		}
+        // ── Step 1: Compile ────────────────────────────────────────────
+        let compilerOutput = '';
+        try {
+            await execFileAsync('docker', [
+                'run', '--rm',
+                '--network', 'none',
+                `--memory=${memoryMb}m`,
+                '--cpus=1',
+                '-v', `${workDir}:/code`,
+                '-w', '/code',
+                DOCKER_IMAGE,
+                'g++', '-O2', '-o', 'solution', 'solution.cpp',
+            ], { timeout: COMPILE_TIMEOUT_MS });
+        } catch (err) {
+            compilerOutput = (err.stderr || err.stdout || err.message || '').toString().trim();
+            const testcaseResults = collectAllResults
+                ? inputs.map((input, index) => ({
+                    index,
+                    input,
+                    output: '',
+                    status: 'FAILED',
+                    errorType: 'CE',
+                    errorMessage: compilerOutput,
+                }))
+                : [];
 
-		// ── Step 2: Run one process per testcase ──────────────────────
-		const outputs = [];
-		let verdict = 'AC';
-		let firstFailedTestCase = null;
-		let totalTime = 0;
+            return { verdict: 'CE', compilerOutput, outputs: [], executionTime: 0, testcaseResults };
+        }
 
-		for (let i = 0; i < inputs.length; i++) {
-			const input = inputs[i];
-			const inputFile = path.join(workDir, `input_${i}.txt`);
-			await fs.writeFile(inputFile, input, 'utf8');
+        // ── Step 2: Run one process per testcase ──────────────────────
+        const outputs = [];
+        const testcaseResults = [];
+        let verdict = 'AC';
+        let firstFailedTestCase = null;
+        let totalTime = 0;
 
-			const start = Date.now();
-			let stdout = '';
-			let timedOut = false;
-			let runtimeError = false;
-			let memoryExceeded = false;
+        for (let i = 0; i < inputs.length; i++) {
+            const input = inputs[i];
+            const inputFile = path.join(workDir, `input_${i}.txt`);
+            await fs.writeFile(inputFile, input, 'utf8');
 
-			try {
-				const result = await execFileAsync('docker', [
-					'run', '--rm',
-					'--network', 'none',
-					`--memory=${memoryMb}m`,
-					`--memory-swap=${memoryMb}m`, // disable swap so OOM kill fires on limit
-					'--cpus=1',
-					'-v', `${workDir}:/code`,
-					'-w', '/code',
-					DOCKER_IMAGE,
-					'bash', '-c', `./solution < input_${i}.txt`,
-				], { timeout: timeLimitMs + 1000 });
+            const start = Date.now();
+            let stdout = '';
+            let timedOut = false;
+            let runtimeError = false;
+            let memoryExceeded = false;
+            let failure = null;
 
-				stdout = (result.stdout || '').toString().trimEnd();
-			} catch (err) {
-				// err.killed = true  → Node's timeout fired          → TLE
-				// err.code === 137   → Docker OOM SIGKILL             → MLE
-				// anything else      → program crashed (RE)           → RE
-				//
-				// NOTE: do NOT use elapsed time to classify TLE.
-				// elapsed includes Docker container startup overhead and will
-				// misclassify instant RE crashes as TLE when timeLimitMs is small.
-				// err.killed is the authoritative signal that Node's timeout fired.
-				if (err.killed) {
-					timedOut = true;
-					verdict = 'TLE';
-				} else if (err.code === 137) {
-					memoryExceeded = true;
-					verdict = 'MLE';
-				} else {
-					runtimeError = true;
-					verdict = 'RE';
-				}
-			}
+            try {
+                const result = await execFileAsync('docker', [
+                    'run', '--rm',
+                    '--network', 'none',
+                    `--memory=${memoryMb}m`,
+                    `--memory-swap=${memoryMb}m`, // disable swap so OOM kill fires on limit
+                    '--cpus=1',
+                    '-v', `${workDir}:/code`,
+                    '-w', '/code',
+                    DOCKER_IMAGE,
+                    'bash', '-c', `./solution < input_${i}.txt`,
+                ], { timeout: timeLimitMs + 1000 });
 
-			const elapsed = Date.now() - start;
-			totalTime = Math.max(totalTime, elapsed);
+                stdout = (result.stdout || '').toString().trimEnd();
+            } catch (err) {
+                failure = classifyDockerError(err);
 
-			outputs.push(stdout);
+                // err.killed = true  → Node's timeout fired          → TLE
+                // err.code === 137   → Docker OOM SIGKILL             → MLE
+                // anything else      → program crashed (RE)           → RE
+                //
+                // NOTE: do NOT use elapsed time to classify TLE.
+                // elapsed includes Docker container startup overhead and will
+                // misclassify instant RE crashes as TLE when timeLimitMs is small.
+                // err.killed is the authoritative signal that Node's timeout fired.
+                if (err.killed) {
+                    timedOut = true;
+                    verdict = verdict === 'AC' ? 'TLE' : verdict;
+                } else if (err.code === 137) {
+                    memoryExceeded = true;
+                    verdict = verdict === 'AC' ? 'MLE' : verdict;
+                } else {
+                    runtimeError = true;
+                    verdict = verdict === 'AC' ? 'RE' : verdict;
+                }
+            }
 
-			if (timedOut || runtimeError || memoryExceeded) {
-				firstFailedTestCase = { index: i, input };
-				break; // stop on first failure
-			}
-		}
+            const elapsed = Date.now() - start;
+            totalTime = Math.max(totalTime, elapsed);
 
-		return {
-			verdict,
-			outputs,
-			executionTime: totalTime,
-			compilerOutput,
-			firstFailedTestCase,
-		};
-	} finally {
-		// Always clean up temp dir
-		await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
-	}
+            outputs.push(stdout);
+            const testcaseResult = {
+                index: i,
+                input,
+                output: stdout,
+                status: 'PASSED',
+                errorType: '',
+                errorMessage: '',
+            };
+
+            if (timedOut || runtimeError || memoryExceeded) {
+                testcaseResult.status = 'FAILED';
+                testcaseResult.errorType = failure?.errorType || (timedOut ? 'TLE' : memoryExceeded ? 'MLE' : 'RE');
+                testcaseResult.errorMessage = failure?.errorMessage || '';
+                if (!firstFailedTestCase) {
+                    firstFailedTestCase = {
+                        index: i,
+                        input,
+                        errorType: testcaseResult.errorType,
+                        errorMessage: testcaseResult.errorMessage,
+                    };
+                }
+
+                if (!collectAllResults) {
+                    break; // stop on first failure by default
+                }
+            }
+
+            testcaseResults.push(testcaseResult);
+        }
+
+        return {
+            verdict,
+            outputs,
+            executionTime: totalTime,
+            compilerOutput,
+            firstFailedTestCase,
+            testcaseResults,
+        };
+    } finally {
+        // Always clean up temp dir
+        await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+    }
 };
 
 /**
@@ -146,35 +210,31 @@ export const runInDocker = async ({
  * Replaces LECO_USER_CODE placeholder with the user's class/function.
  */
 export const buildFinalSource = (codeSnippet, userCode) => {
-	if (!codeSnippet.includes('LECO_USER_CODE')) {
-		throw new Error('codeSnippet does not contain LECO_USER_CODE placeholder');
-	}
-	return codeSnippet.replace('LECO_USER_CODE', userCode);
+    if (!codeSnippet.includes('LECO_USER_CODE')) {
+        throw new Error('codeSnippet does not contain LECO_USER_CODE placeholder');
+    }
+    return codeSnippet.replace('LECO_USER_CODE', userCode);
 };
 
 /**
  * Compare actual vs expected output according to the question's comparatorType.
  */
 export const compareOutput = (actual, expected, comparatorType) => {
-	const normalize = (s) => s.trim().replace(/\r\n/g, '\n');
+    const normalize = (s) => s.trim().replace(/\r\n/g, '\n');
 
-	switch (comparatorType) {
-		case 'EXACT_MATCH':
-			return normalize(actual) === normalize(expected);
+    switch (comparatorType) {
+        case 'EXACT_MATCH':
+            return normalize(actual) === normalize(expected);
 
-		case 'FLOAT_EPSILON': {
-			const EPSILON = 1e-5;
-			const a = parseFloat(actual);
-			const e = parseFloat(expected);
-			if (isNaN(a) || isNaN(e)) return false;
-			return Math.abs(a - e) <= EPSILON;
-		}
+        case 'FLOAT_EPSILON': {
+            const EPSILON = 1e-5;
+            const a = parseFloat(actual);
+            const e = parseFloat(expected);
+            if (isNaN(a) || isNaN(e)) return false;
+            return Math.abs(a - e) <= EPSILON;
+        }
 
-		case 'CUSTOM':
-			// Custom comparator not yet implemented — fall back to exact match
-			return normalize(actual) === normalize(expected);
-
-		default:
-			return normalize(actual) === normalize(expected);
-	}
+        default:
+            return normalize(actual) === normalize(expected);
+    }
 };
